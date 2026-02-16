@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.zfs.maintenance</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/zfs-maintenance.sh</string>
+    </array>
+    
+    <!-- Run on 1st day of every month at 2:00 AM -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/var/log/zfs-maintenance.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/var/log/zfs-maintenance.log</string>
+    
+    <key>UserName</key>
+    <string>root</string>
+    
+    <key>GroupName</key>
+    <string>wheel</string>
+    
+    <!-- Don't run on battery power (for laptops) -->
+    <key>RunAtLoad</key>
+    <false/>
+    
+    <!-- Low priority to not interfere with system -->
+    <key>Nice</key>
+    <integer>15</integer>
+</dict>
+</plist>

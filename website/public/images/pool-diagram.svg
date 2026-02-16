@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" fill="none">
+  <!-- ZFS Pool Architecture Diagram -->
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="#F0F9FF"/>
+  
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1E40AF" text-anchor="middle">
+    ZFS Pool Architecture
+  </text>
+  
+  <!-- Drives -->
+  <g id="drives">
+    <!-- Drive 1 -->
+    <rect x="50" y="100" width="120" height="160" rx="10" fill="#4B5563" stroke="#1F2937" stroke-width="3"/>
+    <rect x="60" y="110" width="100" height="120" rx="5" fill="#6B7280"/>
+    <circle cx="110" cy="240" r="15" fill="#14B8A6"/>
+    <text x="110" y="290" font-family="Arial" font-size="14" fill="#1F2937" text-anchor="middle">Drive 1</text>
+    
+    <!-- Drive 2 -->
+    <rect x="200" y="100" width="120" height="160" rx="10" fill="#4B5563" stroke="#1F2937" stroke-width="3"/>
+    <rect x="210" y="110" width="100" height="120" rx="5" fill="#6B7280"/>
+    <circle cx="260" cy="240" r="15" fill="#14B8A6"/>
+    <text x="260" y="290" font-family="Arial" font-size="14" fill="#1F2937" text-anchor="middle">Drive 2</text>
+    
+    <!-- Drive 3 -->
+    <rect x="350" y="100" width="120" height="160" rx="10" fill="#4B5563" stroke="#1F2937" stroke-width="3"/>
+    <rect x="360" y="110" width="100" height="120" rx="5" fill="#6B7280"/>
+    <circle cx="410" cy="240" r="15" fill="#14B8A6"/>
+    <text x="410" y="290" font-family="Arial" font-size="14" fill="#1F2937" text-anchor="middle">Drive 3</text>
+    
+    <!-- Drive 4 -->
+    <rect x="500" y="100" width="120" height="160" rx="10" fill="#4B5563" stroke="#1F2937" stroke-width="3"/>
+    <rect x="510" y="110" width="100" height="120" rx="5" fill="#6B7280"/>
+    <circle cx="560" cy="240" r="15" fill="#14B8A6"/>
+    <text x="560" y="290" font-family="Arial" font-size="14" fill="#1F2937" text-anchor="middle">Drive 4</text>
+  </g>
+  
+  <!-- RAID-Z2 Label -->
+  <rect x="250" y="320" width="300" height="50" rx="25" fill="#1E40AF"/>
+  <text x="400" y="351" font-family="Arial" font-size="18" font-weight="bold" fill="white" text-anchor="middle">
+    RAID-Z2 Configuration
+  </text>
+  
+  <!-- Data Flow Lines -->
+  <g stroke="#14B8A6" stroke-width="3" fill="none" opacity="0.7">
+    <path d="M 110 270 L 110 320 L 300 320" stroke-dasharray="5,5"/>
+    <path d="M 260 270 L 260 320 L 350 320" stroke-dasharray="5,5"/>
+    <path d="M 410 270 L 410 320 L 450 320" stroke-dasharray="5,5"/>
+    <path d="M 560 270 L 560 320 L 500 320" stroke-dasharray="5,5"/>
+  </g>
+  
+  <!-- ZFS Pool -->
+  <rect x="150" y="400" width="500" height="140" rx="15" fill="white" stroke="#1E40AF" stroke-width="4"/>
+  <text x="400" y="430" font-family="Arial" font-size="20" font-weight="bold" fill="#1E40AF" text-anchor="middle">
+    ZFS Storage Pool
+  </text>
+  
+  <!-- Features -->
+  <g font-family="Arial" font-size="13" fill="#374151">
+    <text x="180" y="460">✓ Data Integrity (Checksums)</text>
+    <text x="180" y="485">✓ Instant Snapshots</text>
+    <text x="180" y="510">✓ Transparent Compression</text>
+    
+    <text x="420" y="460">✓ AES-256 Encryption</text>
+    <text x="420" y="485">✓ 2-Disk Failure Tolerance</text>
+    <text x="420" y="510">✓ Self-Healing Data</text>
+  </g>
+  
+  <!-- Checksum Icons -->
+  <g>
+    <circle cx="120" cy="180" r="8" fill="#10B981"/>
+    <path d="M 117 180 L 119 182 L 123 177" stroke="white" stroke-width="2" fill="none"/>
+    
+    <circle cx="270" cy="180" r="8" fill="#10B981"/>
+    <path d="M 267 180 L 269 182 L 273 177" stroke="white" stroke-width="2" fill="none"/>
+    
+    <circle cx="420" cy="180" r="8" fill="#10B981"/>
+    <path d="M 417 180 L 419 182 L 423 177" stroke="white" stroke-width="2" fill="none"/>
+    
+    <circle cx="570" cy="180" r="8" fill="#10B981"/>
+    <path d="M 567 180 L 569 182 L 573 177" stroke="white" stroke-width="2" fill="none"/>
+  </g>
+</svg>

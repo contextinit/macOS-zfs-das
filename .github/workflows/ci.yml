@@ -1,0 +1,87 @@
+name: CI - Tests and Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: ShellCheck Linting
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install ShellCheck
+        run: brew install shellcheck
+      
+      - name: Run ShellCheck tests
+        run: |
+          chmod +x tests/test-shellcheck.sh
+          ./tests/test-shellcheck.sh
+
+  script-validation:
+    name: Script Validation
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh swiftbar/*.sh tests/*.sh
+      
+      - name: Run script validation tests
+        run: |
+          chmod +x tests/test-scripts.sh
+          ./tests/test-scripts.sh
+
+  config-integration:
+    name: Config Integration Tests
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run config integration tests
+        run: |
+          chmod +x tests/test-config-integration.sh
+          ./tests/test-config-integration.sh
+
+  full-test-suite:
+    name: Full Test Suite
+    runs-on: macos-latest
+    needs: [shellcheck, script-validation, config-integration]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install ShellCheck
+        run: brew install shellcheck
+      
+      - name: Make all scripts executable
+        run: chmod +x scripts/*.sh swiftbar/*.sh tests/*.sh
+      
+      - name: Run all tests
+        run: |
+          chmod +x tests/run-all-tests.sh
+          ./tests/run-all-tests.sh
+        continue-on-error: true
+        id: run-tests
+      
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.run-tests.outcome }}" == "success" ]; then
+            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi

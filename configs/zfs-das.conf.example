@@ -1,0 +1,27 @@
+###############################################################################
+# ZFS DAS Configuration File - EXAMPLE
+# 
+# Copy this file to one of these locations:
+#   - /usr/local/etc/zfs-das.conf (recommended for system-wide use)
+#   - /etc/zfs-das.conf
+#   - $HOME/.config/zfs-das.conf (user-specific)
+#
+# Then edit the values to match your setup.
+###############################################################################
+
+# Pool name
+POOL_NAME="media_pool"
+
+# ZFS binary path
+ZFS_BIN_PATH="/usr/local/zfs/bin"
+
+# Time Machine settings
+ENABLE_TIME_MACHINE=true
+TM_SPARSE_BUNDLE_NAME="MacMini-Backup.sparsebundle"
+TM_VOLUME_NAME="MacMini-TM"
+
+# Monitoring thresholds
+CAPACITY_WARNING=70
+CAPACITY_CRITICAL=85
+
+# See configs/zfs-das.conf for all available options

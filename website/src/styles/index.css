@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply font-sans text-gray-900 antialiased;
+  }
+
+  code {
+    @apply font-mono text-sm;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-200 ease-in-out;
+    @apply hover:scale-105 hover:shadow-lg;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-900 hover:bg-gray-300;
+  }
+  
+  .btn-accent {
+    @apply bg-accent-500 text-white hover:bg-accent-600;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-soft p-6;
+    @apply hover:shadow-xl transition-shadow duration-300;
+  }
+  
+  .command-block {
+    @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto;
+    @apply font-mono text-sm relative;
+  }
+  
+  .nav-link {
+    @apply px-4 py-2 rounded-md transition-colors duration-200;
+    @apply hover:bg-gray-100 hover:text-primary-600;
+  }
+  
+  .step-indicator {
+    @apply flex items-center justify-between mb-8;
+  }
+  
+  .step {
+    @apply flex items-center;
+  }
+  
+  .step-circle {
+    @apply w-10 h-10 rounded-full flex items-center justify-center font-semibold;
+    @apply transition-all duration-300;
+  }
+  
+  .step-circle.active {
+    @apply bg-primary-600 text-white scale-110;
+  }
+  
+  .step-circle.completed {
+    @apply bg-green-500 text-white;
+  }
+  
+  .step-circle.pending {
+    @apply bg-gray-200 text-gray-500;
+  }
+  
+  .step-line {
+    @apply flex-1 h-0.5 mx-2;
+  }
+  
+  .step-line.completed {
+    @apply bg-green-500;
+  }
+  
+  .step-line.pending {
+    @apply bg-gray-200;
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    @apply bg-gradient-to-r from-primary-600 to-primary-700;
+  }
+  
+  .gradient-accent {
+    @apply bg-gradient-to-r from-accent-500 to-accent-600;
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-accent-500;
+  }
+}

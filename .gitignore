@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Thumbnails
+Thumbs.db
+
+# Files that might appear in the root
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Logs
+*.log
+*.err
+
+# Temporary files
+*.tmp
+*.swp
+*~
+.*.sw?
+
+# ZFS cache (don't commit user's pool data)
+.zfs-monitor/
+
+# Keys (NEVER commit encryption keys)
+*.key
+keys/*.key
+/etc/zfs/keys/
+
+# User-specific configs
+config.local.sh
+local-config/
+
+# IDE
+.vscode/
+.idea/
+
+# Test outputs
+test-results/
+
+# Node/Website
+node_modules/
+website/node_modules/
+website/dist/
+dist/
+
+# Stale directories
+web/
+__PersonalDocumentation/

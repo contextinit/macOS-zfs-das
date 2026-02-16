@@ -1,0 +1,20 @@
+# ShellCheck Configuration for macOS ZFS DAS
+
+# Disable specific checks that are not applicable or too strict
+disable=SC1090  # Can't follow non-constant source (for config files)
+disable=SC2148  # Tips about adding shebang (we have them)
+disable=SC2312  # Consider invoking separately to avoid masking return values
+
+# Shell dialect
+shell=bash
+
+# Enable optional checks
+enable=all
+
+# Exclude patterns
+exclude-dir=.git
+exclude-dir=node_modules
+exclude-dir=__PersonalDocumentation
+
+# Severity threshold (error, warning, info, style)
+severity=style
