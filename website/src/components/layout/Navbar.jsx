@@ -19,10 +19,7 @@ export default function Navbar() {
                 <div className="flex justify-between h-16">
                     {/* Logo */}
                     <div className="flex items-center">
-                        <Link to="/" className="flex items-center space-x-2">
-                            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">Z</span>
-                            </div>
+                        <Link to="/" className="flex items-center">
                             <span className="font-bold text-xl text-gray-900">macOS ZFS DAS</span>
                         </Link>
                     </div>

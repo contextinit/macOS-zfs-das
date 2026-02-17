@@ -90,8 +90,8 @@ echo "✓ Pool created successfully!"`;
                     totalSteps={totalSteps}
                     onNext={handleNext}
                     onPrevious={handlePrev}
-                    onFinish={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
                     isLastStep={currentStep === totalSteps}
+                    commandsToCopy={generateCommands()}
                 >
                     {currentStep === 1 && (
                         <div className="space-y-6">

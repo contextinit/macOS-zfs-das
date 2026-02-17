@@ -30,10 +30,7 @@ export default function Footer() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     {/* Brand */}
                     <div className="col-span-1">
-                        <div className="flex items-center space-x-2 mb-4">
-                            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-xl">Z</span>
-                            </div>
+                        <div className="flex items-center mb-4">
                             <span className="font-bold text-xl text-white">macOS ZFS DAS</span>
                         </div>
                         <p className="text-sm text-gray-400 mb-4">

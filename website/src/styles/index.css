@@ -52,7 +52,7 @@
   }
   
   .step-indicator {
-    @apply flex items-center justify-between mb-8;
+    @apply flex items-start justify-between mb-8;
   }
   
   .step {

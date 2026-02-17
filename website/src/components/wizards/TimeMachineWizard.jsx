@@ -78,8 +78,8 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                     totalSteps={totalSteps}
                     onNext={handleNext}
                     onPrevious={handlePrev}
-                    onFinish={() => window.location.href = '/'}
                     isLastStep={currentStep === totalSteps}
+                    commandsToCopy={generateCommands()}
                 >
                     {currentStep === 1 && (
                         <div className="space-y-6">

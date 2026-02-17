@@ -49,8 +49,8 @@ export default function SwiftBarWizard() {
                     totalSteps={totalSteps}
                     onNext={handleNext}
                     onPrevious={handlePrev}
-                    onFinish={() => window.location.href = '/'}
                     isLastStep={currentStep === totalSteps}
+                    commandsToCopy={`# SwiftBar ZFS Monitoring Setup\n\n# Install SwiftBar\nbrew install swiftbar\n\n# Copy plugin to SwiftBar directory\ncp swiftbar/zfs-${config.monitoringLevel}.30s.sh ~/Library/Application\\ Support/SwiftBar/\n\n# Make executable\nchmod +x ~/Library/Application\\ Support/SwiftBar/zfs-${config.monitoringLevel}.30s.sh\n\n# Refresh SwiftBar (Cmd+R in SwiftBar menu)`}
                 >
                     {currentStep === 1 && (
                         <div className="space-y-6">
