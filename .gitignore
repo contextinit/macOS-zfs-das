@@ -52,6 +52,13 @@ website/node_modules/
 website/dist/
 dist/
 
+# Environment variables (contain secrets — never commit)
+.env
+.env.local
+.env.*.local
+website/.env
+website/.env.local
+
 # Stale directories
 web/
 __PersonalDocumentation/
