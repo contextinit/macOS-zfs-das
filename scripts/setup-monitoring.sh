@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 ###############################################################################
 # SwiftBar Monitoring Setup Script for macOS
@@ -108,20 +109,31 @@ setup_plugin_directory() {
     fi
 }
 
+# Validate that a value contains only safe characters for use in sed replacements
+# and ZFS pool/volume names (alphanumeric, hyphens, underscores).
+validate_name() {
+    local label="$1"
+    local value="$2"
+    if [[ ! "$value" =~ ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$ ]]; then
+        print_error "$label contains invalid characters. Use letters, numbers, hyphens, or underscores only."
+        return 1
+    fi
+}
+
 # Customize plugin for user's pool
 customize_plugin() {
     local plugin_file="$1"
     local pool_name="$2"
     local tm_volume="$3"
-    
-    # Replace pool name
-    sed -i '' "s/POOL_NAME=\"media_pool\"/POOL_NAME=\"$pool_name\"/g" "$plugin_file"
-    
+
+    # Use | as the sed delimiter to avoid conflicts with / in paths
+    sed -i '' "s|POOL_NAME=\"media_pool\"|POOL_NAME=\"${pool_name}\"|g" "$plugin_file"
+
     # Replace Time Machine volume if provided
     if [ -n "$tm_volume" ]; then
-        sed -i '' "s/RMMacMM4/$tm_volume/g" "$plugin_file"
+        sed -i '' "s|RMMacMM4|${tm_volume}|g" "$plugin_file"
     fi
-    
+
     print_success "Plugin customized for pool: $pool_name"
 }
 
@@ -193,6 +205,7 @@ echo ""
 
 read -p "Enter your pool name (default: media_pool): " POOL_NAME
 POOL_NAME=${POOL_NAME:-media_pool}
+validate_name "Pool name" "$POOL_NAME"
 
 print_success "Pool name: $POOL_NAME"
 echo ""
@@ -209,6 +222,7 @@ if [ "$USE_TM" = "y" ] || [ "$USE_TM" = "Y" ]; then
     echo "What is your Time Machine backup volume name?"
     echo "(This is the name shown in Finder when the sparse bundle is mounted)"
     read -p "Volume name: " TM_VOLUME
+    validate_name "Time Machine volume name" "$TM_VOLUME"
 fi
 
 # Step 5: Choose monitoring plugin

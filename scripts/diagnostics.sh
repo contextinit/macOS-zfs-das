@@ -7,14 +7,16 @@
 # Usage: ./scripts/diagnostics.sh [output_file]
 ###############################################################################
 
-set -e
+set -euo pipefail
+umask 077  # Ensure output file is created with 600 permissions (owner read/write only)
 
 # Color codes
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-OUTPUT_FILE="${1:-zfs-diagnostics-$(date +%Y%m%d-%H%M%S).txt}"
+# Default output to $HOME so it is never created in a world-writable directory
+OUTPUT_FILE="${1:-${HOME}/zfs-diagnostics-$(date +%Y%m%d-%H%M%S).txt}"
 
 echo -e "${BLUE}╔═══════════════════════════════════════╗"
 echo "║   ZFS DAS Diagnostics                 ║"

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -uo pipefail
 
 ###############################################################################
 # ZFS Auto-Mount Script for macOS
@@ -82,9 +83,13 @@ send_notification() {
     local title="$1"
     local message="$2"
     local sound="${NOTIFICATION_SOUND:-Basso}"
-    
+
     if [ "${ENABLE_NOTIFICATIONS:-true}" = "true" ]; then
-        osascript -e "display notification \"$message\" with title \"$title\" sound name \"$sound\"" 2>/dev/null || true
+        # Escape double-quotes in each variable before embedding in AppleScript
+        local safe_title="${title//\"/\\\"}"
+        local safe_message="${message//\"/\\\"}"
+        local safe_sound="${sound//\"/\\\"}"
+        osascript -e "display notification \"${safe_message}\" with title \"${safe_title}\" sound name \"${safe_sound}\"" 2>/dev/null || true
     fi
 }
 
@@ -103,7 +108,7 @@ while [ $ATTEMPT -le $RETRY_COUNT ] && [ "$IMPORT_SUCCESS" = false ]; do
         # Exponential backoff for retries
         WAIT_TIME=$((RETRY_DELAY * ATTEMPT))
         log_message "Retry attempt $ATTEMPT/$RETRY_COUNT after ${WAIT_TIME}s delay..."
-        sleep $WAIT_TIME
+        sleep "$WAIT_TIME"
     else
         log_message "Import attempt $ATTEMPT/$RETRY_COUNT..."
     fi
@@ -321,21 +326,6 @@ else
     
     exit 0  # Exit 0 so LaunchDaemon doesn't retry
 fi
-# Log final pool list
-log_message "Final pool and dataset list:"
-"$ZFS_BIN_PATH/zfs" list >> "$LOG_FILE" 2>&1
-
-# Check for any errors in pool
-POOL_ERRORS=$("$ZFS_BIN_PATH/zpool" status "$POOL_NAME" | grep -i "errors:" | grep -v "No known data errors")
-if [ -n "$POOL_ERRORS" ]; then
-    log_message "⚠ WARNING: Pool has errors:"
-    log_message "$POOL_ERRORS"
-else
-    log_message "✓ Pool health: No errors detected"
-fi
-
-log_message "Auto-mount script finished"
-exit 0
 
 ###############################################################################
 # TROUBLESHOOTING

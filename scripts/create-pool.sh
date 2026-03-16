@@ -12,7 +12,7 @@
 # License: MIT
 ###############################################################################
 
-set -e  # Exit on error
+set -euo pipefail
 
 # Color codes for output
 RED='\033[0;31m'
@@ -48,6 +48,24 @@ print_warning() {
 
 print_info() {
     echo -e "${BLUE}ℹ $1${NC}"
+}
+
+# Validate ZFS pool name (letters, numbers, hyphens, underscores; must start with a letter)
+validate_pool_name() {
+    local name="$1"
+    if [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9_-]{0,63}$ ]]; then
+        print_error "Invalid pool name '$name'. Use letters, numbers, hyphens, or underscores. Must start with a letter."
+        return 1
+    fi
+}
+
+# Validate a single disk identifier (must match diskN or diskNsM format)
+validate_disk_id() {
+    local disk="$1"
+    if [[ ! "$disk" =~ ^disk[0-9]+(s[0-9]+)?$ ]]; then
+        print_error "Invalid disk identifier '$disk'. Expected format: disk2, disk3, disk3s1 etc."
+        return 1
+    fi
 }
 
 # Check if running as root
@@ -132,6 +150,7 @@ if [ -z "$POOL_NAME" ]; then
     print_error "Pool name cannot be empty"
     exit 1
 fi
+validate_pool_name "$POOL_NAME"
 
 # Check if pool already exists
 if $ZPOOL list "$POOL_NAME" &>/dev/null; then
@@ -154,14 +173,18 @@ echo "Do NOT include /dev/ prefix or partition numbers"
 echo ""
 read -p "Disks to use: " DISK_INPUT
 
-# Convert to array
+# Convert to array and validate each identifier
 read -ra DISKS <<< "$DISK_INPUT"
 
-# Validate disks
-DISK_COUNT=$(validate_disks "${DISKS[*]}")
-if [ $? -ne 0 ]; then
-    exit 1
-fi
+DISK_COUNT=0
+for disk in "${DISKS[@]}"; do
+    validate_disk_id "$disk"
+    if ! diskutil info "$disk" &>/dev/null; then
+        print_error "Disk not found: $disk"
+        exit 1
+    fi
+    DISK_COUNT=$((DISK_COUNT + 1))
+done
 
 if [ "$DISK_COUNT" -lt 1 ]; then
     print_error "You must select at least 1 disk"
@@ -244,10 +267,11 @@ echo "  RAID type: $RAID_TYPE"
 echo "  Disks (${DISK_COUNT}): ${DISKS[*]}"
 echo ""
 
-# Build disk paths
-DISK_PATHS=""
+# Build /dev/ prefixed path array — kept as a Bash array so each element is
+# a separate, properly-quoted argument to zpool create.
+DISK_DEV_PATHS=()
 for disk in "${DISKS[@]}"; do
-    DISK_PATHS="$DISK_PATHS /dev/$disk"
+    DISK_DEV_PATHS+=("/dev/$disk")
 done
 
 print_warning "ALL DATA ON THESE DISKS WILL BE PERMANENTLY DELETED!"
@@ -266,10 +290,10 @@ print_header "Creating Pool..."
 print_info "Creating ZFS pool..."
 if [ "$RAID_TYPE" = "stripe" ]; then
     # Simple stripe (no vdev keyword)
-    $ZPOOL create -f -o ashift=12 -O compression=lz4 -O atime=off "$POOL_NAME" $DISK_PATHS
+    $ZPOOL create -f -o ashift=12 -O compression=lz4 -O atime=off "$POOL_NAME" "${DISK_DEV_PATHS[@]}"
 else
     # RAID with vdev
-    $ZPOOL create -f -o ashift=12 -O compression=lz4 -O atime=off "$POOL_NAME" "$RAID_TYPE" $DISK_PATHS
+    $ZPOOL create -f -o ashift=12 -O compression=lz4 -O atime=off "$POOL_NAME" "$RAID_TYPE" "${DISK_DEV_PATHS[@]}"
 fi
 
 if [ $? -eq 0 ]; then
