@@ -55,3 +55,6 @@ dist/
 # Stale directories
 web/
 __PersonalDocumentation/
+
+# Website builder artifacts
+website/builder.hostinger.com/
