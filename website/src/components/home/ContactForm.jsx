@@ -1,6 +1,16 @@
 import { useState } from 'react';
 import { PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import Button from '../common/Button';
+import { trackFormSubmit } from '../../utils/analytics';
+
+const TYPE_LABELS = {
+    query: 'Question',
+    consultation: 'Consultation Request',
+    support: 'Technical Support',
+    other: 'General Inquiry',
+};
+
+const CONTACT_EMAIL = 'info@contextinit.com';
 
 export default function ContactForm() {
     const [formData, setFormData] = useState({
@@ -10,21 +20,20 @@ export default function ContactForm() {
         message: '',
         newsletter: false,
     });
-    const [status, setStatus] = useState('idle'); // idle, sending, success, error
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = (e) => {
         e.preventDefault();
-        setStatus('sending');
 
-        // TODO: Replace with actual backend API endpoint
-        // For now, this is a demo that doesn't send real emails
-        setTimeout(() => {
-            console.log('Form submitted:', formData);
-            setStatus('success');
-            setFormData({ name: '', email: '', type: 'query', message: '', newsletter: false });
+        trackFormSubmit(formData.type, formData.newsletter);
 
-            setTimeout(() => setStatus('idle'), 3000);
-        }, 1000);
+        const subject = encodeURIComponent(
+            `[macOS ZFS DAS] ${TYPE_LABELS[formData.type]} from ${formData.name}`
+        );
+        const body = encodeURIComponent(
+            `Name: ${formData.name}\nEmail: ${formData.email}\nType: ${TYPE_LABELS[formData.type]}\n\n${formData.message}${formData.newsletter ? '\n\n[Please add me to the newsletter]' : ''}`
+        );
+
+        window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
     };
 
     const handleChange = (e) => {
@@ -45,16 +54,6 @@ export default function ContactForm() {
                         </h2>
                         <p className="text-lg text-gray-600">
                             Have questions? Want a consultation? We're here to help.
-                        </p>
-                    </div>
-
-                    <div className="max-w-3xl mx-auto mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg">
-                        <p className="text-sm text-blue-800">
-                            <strong>Note:</strong> This contact form is a demo interface. Please email us directly at{' '}
-                            <a href="mailto:info@contextinit.com" className="text-blue-900 hover:text-blue-700 font-semibold underline">
-                                info@contextinit.com
-                            </a>
-                            {' '}for actual inquiries.
                         </p>
                     </div>
 
@@ -147,31 +146,20 @@ export default function ContactForm() {
                             variant="primary"
                             size="lg"
                             className="w-full"
-                            disabled={status === 'sending'}
                         >
-                            {status === 'sending' ? (
-                                'Sending...'
-                            ) : status === 'success' ? (
-                                '✓ Message Sent!'
-                            ) : (
-                                <>
-                                    Send Message
-                                    <PaperAirplaneIcon className="ml-2 h-5 w-5 inline" />
-                                </>
-                            )}
+                            Send Message
+                            <PaperAirplaneIcon className="ml-2 h-5 w-5 inline" />
                         </Button>
 
-                        {status === 'success' && (
-                            <p className="mt-4 text-green-600 text-center">
-                                Thank you! We'll get back to you within 24 hours.
-                            </p>
-                        )}
+                        <p className="mt-4 text-sm text-gray-500 text-center">
+                            Clicking "Send Message" will open your email client with the form pre-filled.
+                        </p>
                     </form>
 
                     <p className="text-center text-sm text-gray-500 mt-6">
                         Or email us directly at{' '}
-                        <a href="mailto:info@contextinit.com" className="text-primary-600 hover:text-primary-700 font-medium">
-                            info@contextinit.com
+                        <a href={`mailto:${CONTACT_EMAIL}`} className="text-primary-600 hover:text-primary-700 font-medium">
+                            {CONTACT_EMAIL}
                         </a>
                     </p>
                 </div>
