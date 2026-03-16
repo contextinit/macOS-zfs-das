@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import StepIndicator from './shared/StepIndicator';
 import WizardContainer from './shared/WizardContainer';
 import CommandBlock from './shared/CommandBlock';
+import { validatePoolName, validateDatasetName, validateQuota, validateShareName } from '../../utils/wizardValidation';
 
 export default function TimeMachineWizard() {
     const [currentStep, setCurrentStep] = useState(1);
@@ -16,8 +17,30 @@ export default function TimeMachineWizard() {
 
     const steps = ['Introduction', 'Create Dataset', 'Configure Sharing', 'Client Setup', 'Complete'];
     const totalSteps = 5;
+    const [errors, setErrors] = useState({});
 
-    const handleNext = () => setCurrentStep(Math.min(currentStep + 1, totalSteps));
+    const validateStep = (step) => {
+        const newErrors = {};
+        if (step === 2) {
+            const poolErr = validatePoolName(config.poolName);
+            if (poolErr) newErrors.poolName = poolErr;
+            const datasetErr = validateDatasetName(config.tmDataset);
+            if (datasetErr) newErrors.tmDataset = datasetErr;
+            const quotaErr = validateQuota(config.tmSize);
+            if (quotaErr) newErrors.tmSize = quotaErr;
+        }
+        if (step === 3) {
+            const shareErr = validateShareName(config.shareName);
+            if (shareErr) newErrors.shareName = shareErr;
+        }
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
+    const handleNext = () => {
+        if (!validateStep(currentStep)) return;
+        setCurrentStep(Math.min(currentStep + 1, totalSteps));
+    };
     const handlePrev = () => setCurrentStep(Math.max(currentStep - 1, 1));
 
     const generateCommands = () => {
@@ -79,6 +102,7 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                     onNext={handleNext}
                     onPrevious={handlePrev}
                     isLastStep={currentStep === totalSteps}
+                    wizardName="time_machine"
                     commandsToCopy={generateCommands()}
                 >
                     {currentStep === 1 && (
@@ -111,9 +135,10 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                                 <input
                                     type="text"
                                     value={config.poolName}
-                                    onChange={(e) => setConfig({ ...config, poolName: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    onChange={(e) => { setConfig({ ...config, poolName: e.target.value }); setErrors({ ...errors, poolName: null }); }}
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.poolName ? 'border-red-500' : 'border-gray-300'}`}
                                 />
+                                {errors.poolName && <p className="mt-1 text-sm text-red-600">{errors.poolName}</p>}
                             </div>
 
                             <div>
@@ -123,10 +148,11 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                                 <input
                                     type="text"
                                     value={config.tmDataset}
-                                    onChange={(e) => setConfig({ ...config, tmDataset: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    onChange={(e) => { setConfig({ ...config, tmDataset: e.target.value }); setErrors({ ...errors, tmDataset: null }); }}
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.tmDataset ? 'border-red-500' : 'border-gray-300'}`}
                                     placeholder="timemachine"
                                 />
+                                {errors.tmDataset && <p className="mt-1 text-sm text-red-600">{errors.tmDataset}</p>}
                             </div>
 
                             <div>
@@ -136,13 +162,12 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                                 <input
                                     type="text"
                                     value={config.tmSize}
-                                    onChange={(e) => setConfig({ ...config, tmSize: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    onChange={(e) => { setConfig({ ...config, tmSize: e.target.value }); setErrors({ ...errors, tmSize: null }); }}
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.tmSize ? 'border-red-500' : 'border-gray-300'}`}
                                     placeholder="500G"
                                 />
-                                <p className="mt-2 text-sm text-gray-500">
-                                    Examples: 500G, 1T, 2T
-                                </p>
+                                {errors.tmSize && <p className="mt-1 text-sm text-red-600">{errors.tmSize}</p>}
+                                <p className="mt-2 text-sm text-gray-500">Examples: 500G, 1T, 2T</p>
                             </div>
                         </div>
                     )}
@@ -158,9 +183,10 @@ echo "Connect from client: smb://$(hostname)/${config.shareName}"`;
                                 <input
                                     type="text"
                                     value={config.shareName}
-                                    onChange={(e) => setConfig({ ...config, shareName: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    onChange={(e) => { setConfig({ ...config, shareName: e.target.value }); setErrors({ ...errors, shareName: null }); }}
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.shareName ? 'border-red-500' : 'border-gray-300'}`}
                                 />
+                                {errors.shareName && <p className="mt-1 text-sm text-red-600">{errors.shareName}</p>}
                             </div>
 
                             <div>

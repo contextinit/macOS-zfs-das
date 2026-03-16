@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Button from '../../common/Button';
+import { trackWizardStep, trackWizardComplete, trackCopyCommand } from '../../../utils/analytics';
 
 export default function WizardContainer({
     children,
@@ -12,6 +13,7 @@ export default function WizardContainer({
     canGoPrevious = true,
     isLastStep = false,
     commandsToCopy = '',
+    wizardName = 'unknown',
 }) {
     const [copied, setCopied] = useState(false);
 
@@ -27,22 +29,27 @@ export default function WizardContainer({
             try {
                 await navigator.clipboard.writeText(commandsToCopy);
                 setCopied(true);
+                trackCopyCommand(commandsToCopy);
             } catch {
-                // Fallback for older browsers
-                const textarea = document.createElement('textarea');
-                textarea.value = commandsToCopy;
-                textarea.style.position = 'fixed';
-                textarea.style.opacity = '0';
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-                setCopied(true);
+                // Clipboard API unavailable — show a visible error rather than
+                // silently failing or using the deprecated execCommand API.
+                alert('Could not copy automatically. Please select the text and copy it manually (Cmd+C).');
             }
         }
+        trackWizardComplete(wizardName);
         if (onFinish) {
             onFinish();
         }
+    };
+
+    const handleNext = () => {
+        trackWizardStep(wizardName, currentStep + 1, totalSteps, 'next');
+        if (onNext) onNext();
+    };
+
+    const handlePrevious = () => {
+        trackWizardStep(wizardName, currentStep - 1, totalSteps, 'previous');
+        if (onPrevious) onPrevious();
     };
 
     return (
@@ -54,7 +61,7 @@ export default function WizardContainer({
                 <div className="flex justify-between items-center mt-8 pt-6 border-t">
                     <Button
                         variant="secondary"
-                        onClick={onPrevious}
+                        onClick={handlePrevious}
                         disabled={!canGoPrevious || currentStep === 1}
                         className={currentStep === 1 ? 'invisible' : ''}
                     >
@@ -62,14 +69,16 @@ export default function WizardContainer({
                     </Button>
 
                     <div className="flex items-center gap-3">
-                        {copied && (
-                            <span className="text-green-600 text-sm font-medium animate-fade-in flex items-center gap-1">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                Commands Copied!
-                            </span>
-                        )}
+                        <div aria-live="polite" aria-atomic="true">
+                            {copied && (
+                                <span className="text-green-600 text-sm font-medium animate-fade-in flex items-center gap-1">
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Commands Copied!
+                                </span>
+                            )}
+                        </div>
 
                         {isLastStep ? (
                             <Button
@@ -82,7 +91,7 @@ export default function WizardContainer({
                         ) : (
                             <Button
                                 variant="primary"
-                                onClick={onNext}
+                                onClick={handleNext}
                                 disabled={!canGoNext}
                             >
                                 Next

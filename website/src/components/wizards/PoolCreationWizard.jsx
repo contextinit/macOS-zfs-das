@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import StepIndicator from './shared/StepIndicator';
 import WizardContainer from './shared/WizardContainer';
 import CommandBlock from './shared/CommandBlock';
+import { trackWizardConfig } from '../../utils/analytics';
+import { validatePoolName, validateDrives } from '../../utils/wizardValidation';
 
 export default function PoolCreationWizard() {
     const [currentStep, setCurrentStep] = useState(1);
@@ -14,11 +16,27 @@ export default function PoolCreationWizard() {
         encryption: true,
         keyLocation: '/etc/zfs/keys',
     });
+    const [errors, setErrors] = useState({});
 
     const steps = ['Introduction', 'RAID & Drives', 'Configuration', 'Review', 'Commands'];
     const totalSteps = 5;
 
+    const validateStep = (step) => {
+        const newErrors = {};
+        if (step === 2) {
+            const drivesError = validateDrives(config.drives.join(' '));
+            if (drivesError) newErrors.drives = drivesError;
+        }
+        if (step === 3) {
+            const poolNameError = validatePoolName(config.poolName);
+            if (poolNameError) newErrors.poolName = poolNameError;
+        }
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
     const handleNext = () => {
+        if (!validateStep(currentStep)) return;
         if (currentStep < totalSteps) {
             setCurrentStep(currentStep + 1);
         }
@@ -92,6 +110,7 @@ echo "✓ Pool created successfully!"`;
                     onPrevious={handlePrev}
                     isLastStep={currentStep === totalSteps}
                     commandsToCopy={generateCommands()}
+                    wizardName="pool_creation"
                 >
                     {currentStep === 1 && (
                         <div className="space-y-6">
@@ -123,7 +142,10 @@ echo "✓ Pool created successfully!"`;
                                 </label>
                                 <select
                                     value={config.raidType}
-                                    onChange={(e) => setConfig({ ...config, raidType: e.target.value })}
+                                    onChange={(e) => {
+                                        setConfig({ ...config, raidType: e.target.value });
+                                        trackWizardConfig('pool_creation', 'raid_type', e.target.value);
+                                    }}
                                     className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                                 >
                                     <option value="mirror">Mirror (2 drives, 50% capacity, survives 1 failure)</option>
@@ -140,12 +162,16 @@ echo "✓ Pool created successfully!"`;
                                 <input
                                     type="text"
                                     value={config.drives.join(' ')}
-                                    onChange={(e) => setConfig({ ...config, drives: e.target.value.split(' ') })}
+                                    onChange={(e) => {
+                                        setConfig({ ...config, drives: e.target.value.split(/\s+/).filter(Boolean) });
+                                        setErrors({ ...errors, drives: null });
+                                    }}
                                     placeholder="disk2 disk3 disk4 disk5"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.drives ? 'border-red-500' : 'border-gray-300'}`}
                                 />
+                                {errors.drives && <p className="mt-1 text-sm text-red-600">{errors.drives}</p>}
                                 <p className="mt-2 text-sm text-gray-500">
-                                    Use diskutil list to find your drive identifiers
+                                    Use <code>diskutil list</code> to find your drive identifiers
                                 </p>
                             </div>
                         </div>
@@ -162,9 +188,13 @@ echo "✓ Pool created successfully!"`;
                                 <input
                                     type="text"
                                     value={config.poolName}
-                                    onChange={(e) => setConfig({ ...config, poolName: e.target.value })}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                                    onChange={(e) => {
+                                        setConfig({ ...config, poolName: e.target.value });
+                                        setErrors({ ...errors, poolName: null });
+                                    }}
+                                    className={`w-full px-4 py-3 border rounded-lg ${errors.poolName ? 'border-red-500' : 'border-gray-300'}`}
                                 />
+                                {errors.poolName && <p className="mt-1 text-sm text-red-600">{errors.poolName}</p>}
                             </div>
 
                             <div>
@@ -173,7 +203,10 @@ echo "✓ Pool created successfully!"`;
                                 </label>
                                 <select
                                     value={config.compression}
-                                    onChange={(e) => setConfig({ ...config, compression: e.target.value })}
+                                    onChange={(e) => {
+                                        setConfig({ ...config, compression: e.target.value });
+                                        trackWizardConfig('pool_creation', 'compression', e.target.value);
+                                    }}
                                     className="w-full px-4 py-3 border border-gray-300 rounded-lg"
                                 >
                                     <option value="lz4">LZ4 (Recommended - Fast & Efficient)</option>
@@ -188,7 +221,10 @@ echo "✓ Pool created successfully!"`;
                                     <input
                                         type="checkbox"
                                         checked={config.encryption}
-                                        onChange={(e) => setConfig({ ...config, encryption: e.target.checked })}
+                                        onChange={(e) => {
+                                            setConfig({ ...config, encryption: e.target.checked });
+                                            trackWizardConfig('pool_creation', 'encryption', e.target.checked);
+                                        }}
                                         className="w-4 h-4 text-primary-600 border-gray-300 rounded"
                                     />
                                     <span className="ml-2 text-sm text-gray-700">
