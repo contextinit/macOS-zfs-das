@@ -28,19 +28,15 @@ csrutil disable
 csrutil enable
 ```
 
-### Homebrew Installation Fails
+### OpenZFS Not Found After Installing
 
-**Solution:**
-```bash
-# Update Homebrew
-brew update
+OpenZFS for macOS is not available via Homebrew. Download the official `.pkg` installer:
 
-# Try installing again
-brew install openzfs
-
-# If still fails, install from GitHub release
-# Visit https://openzfsonosx.org/
-```
+1. Go to [openzfsonosx.org](https://openzfsonosx.org/)
+2. Download the latest `.pkg` for your macOS version
+3. Run the installer and approve the system extension in **System Settings → Privacy & Security**
+4. Restart your Mac
+5. Verify: `/usr/local/zfs/bin/zpool --version`
 
 ## Pool Creation Issues
 
@@ -364,14 +360,18 @@ sudo launchctl list | grep smb
 
 **Solution:**
 ```bash
-# Check plugin path
-ls -la ~/Library/Application\ Support/SwiftBar/
+# Check plugin directory (note: plugins go in Plugins/ subdirectory)
+ls -la ~/Library/Application\ Support/SwiftBar/Plugins/
 
 # Make plugin executable
-chmod +x ~/Library/Application\ Support/SwiftBar/zfs-monitor.30s.sh
+chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/zfs-monitor.30s.sh
 
 # Check SwiftBar is running
 ps aux | grep SwiftBar
+open /Applications/SwiftBar.app
+
+# Re-install SwiftBar and plugins
+bash scripts/install-swiftbar.sh
 ```
 
 ### Automated Scripts Not Running
@@ -419,9 +419,9 @@ log show --predicate 'process == "zfs"' --last 1h
 ### Collect Diagnostic Information
 
 ```bash
-# Run diagnostics script
+# Run diagnostics script (output saved to your home directory)
 chmod +x scripts/diagnostics.sh
-sudo ./scripts/diagnostics.sh > zfs-diagnostics.txt
+sudo ./scripts/diagnostics.sh
 
 # This creates a report with:
 # - Pool status

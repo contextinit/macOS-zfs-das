@@ -1,501 +1,190 @@
 # Monitoring Guide
 
+SwiftBar menu bar integration, health checks, and alerting for ZFS pools on macOS.
+
 ## Overview
 
-Comprehensive monitoring solution for ZFS pools including SwiftBar menu bar integration, proactive health checks, and alerting.
+Two SwiftBar plugins are included. Both auto-refresh every 30 seconds and display pool health in your menu bar:
 
-## Monitoring Components
+| Plugin | File | Best for |
+|---|---|---|
+| Standard | `swiftbar/zfs-monitor.30s.sh` | Most users — clean, essential stats |
+| Advanced | `swiftbar/zfs-advanced.30s.sh` | Power users — ARC stats, trends, snapshot actions |
 
-### 1. SwiftBar Menu Bar Monitoring
+## Installation
 
-Real-time visual monitoring in your macOS menu bar.
+### Via Setup Wizard (Recommended)
 
-**Plugins Available:**
+During Phase 6 of `bash scripts/setup.sh`, choose a plugin level. The wizard installs SwiftBar and copies the plugin automatically.
 
-#### Basic Monitor ([zfs-monitor.30s.sh](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/swiftbar/zfs-monitor.30s.sh))
+### Manual Installation
 
-**Features:**
-- Pool health status
-- Capacity percentage
-- Error count
-- Time Machine status
-- Quick actions menu
-
-**Display:**
-```
-🟢 ZFS 45%  ← Menu bar
-```
-
-#### Advanced Monitor ([zfs-advanced.30s.sh](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/swiftbar/zfs-advanced.30s.sh))
-
-**Features:**
-- All basic features PLUS:
-- Trending graphs
-- ARC statistics
-- Per-dataset details
-- Historical data
-- Alert thresholds
-- Fragmentation monitoring
-
-**Display:**
-```
-🟢 ZFS 45% ↗  ← Menu bar (with trend)
-```
-
-**Setup:** See [docs/SETUP.md](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/docs/SETUP.md) or use `setup-monitoring.sh`
-
----
-
-### 2. Automated Health Checks
-
-Proactive monitoring that alerts you to issues before they become critical.
-
-**Script:** [scripts/health-check.sh](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/scripts/health-check.sh)
-
-**What It Monitors:**
-
-| Check | Threshold | Alert Level |
-|-------|-----------|-------------|
-| Pool Health | Not ONLINE | CRITICAL |
-| Capacity | 70% | WARNING |
-| Capacity | 85% | CRITICAL |
-| Read Errors | > 0 | CRITICAL |
-| Write Errors | > 0 | CRITICAL |
-| Scrub Age | > 35 days | WARNING |
-| Encryption Keys | Unavailable | WARNING |
-| Unmounted Datasets | > 0 | WARNING |
-| Auto-Mount Service | Not running | WARNING |
-
-**Schedule:** Every 6 hours (00:00, 06:00, 12:00, 18:00)
-
-**Installation:**
 ```bash
-# Copy health check script
-sudo cp scripts/health-check.sh /usr/local/bin/
-sudo chmod +x /usr/local/bin/health-check.sh
+# Install SwiftBar (fetches latest version from GitHub — no Homebrew needed)
+bash scripts/install-swiftbar.sh
 
-# Install LaunchDaemon
-sudo cp configs/launchd/com.local.zfs.healthcheck.plist /Library/LaunchDaemons/
-sudo launchctl load /Library/LaunchDaemons/com.local.zfs.healthcheck.plist
+# Or install with a custom plugin directory
+bash scripts/install-swiftbar.sh --plugin-dir ~/my-plugins
 ```
 
-**Manual Run:**
+`install-swiftbar.sh` automatically:
+- Fetches the latest SwiftBar release via GitHub Releases API
+- Skips download if SwiftBar is already up to date
+- Removes macOS Gatekeeper quarantine (`xattr -dr com.apple.quarantine`)
+- Copies all `swiftbar/*.sh` plugins to your plugin directory
+- Launches SwiftBar if it is not already running
+
+### Manual Plugin Copy
+
 ```bash
-sudo /usr/local/bin/health-check.sh
+PLUGIN_DIR=~/Library/Application\ Support/SwiftBar/Plugins
+
+# Standard plugin
+cp swiftbar/zfs-monitor.30s.sh "$PLUGIN_DIR/"
+chmod +x "$PLUGIN_DIR/zfs-monitor.30s.sh"
+
+# Advanced plugin (choose one)
+cp swiftbar/zfs-advanced.30s.sh "$PLUGIN_DIR/"
+chmod +x "$PLUGIN_DIR/zfs-advanced.30s.sh"
 ```
 
----
+Then open SwiftBar and set the plugin directory.
 
-### 3. Status Check Utility
+## Plugin Features
 
-On-demand comprehensive status check.
+### Standard Plugin (`zfs-monitor.30s.sh`)
 
-**Script:** [scripts/check-zfs-status.sh](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/scripts/check-zfs-status.sh)
+**Menu bar**: Pool name + health status icon
 
-**Usage:**
+**Menu items:**
+- Pool health (ONLINE / DEGRADED / FAULTED)
+- Capacity percentage with colour warning (yellow > 70%, red > 85%)
+- Used / available storage
+- Dataset list with mount status
+- Error count (read, write, checksum)
+- Last scrub date and result
+- Quick actions: Refresh, Open Console, Run Scrub
+
+### Advanced Plugin (`zfs-advanced.30s.sh`)
+
+Everything in the standard plugin, plus:
+
+- **Visual capacity bar**: Unicode block bar (e.g. `████████░░░░ 67%`)
+- **ARC statistics**: Hit rate, cache size, evictions (via `sysctl` — no external dependencies)
+- **Trend arrows**: Capacity trend over time (↑ filling / ↓ freeing / → stable), calculated from a file-locked cache to prevent race conditions
+- **Compression ratio**: Per-dataset compression savings
+- **Encryption status**: Per-dataset encryption indicator
+- **Snapshot management**: Create snapshot, list recent snapshots, delete snapshot — all from the menu bar
+- **I/O statistics**: Read/write ops per second via `zpool iostat`
+
+### SF Symbols & Dark/Light Mode (SwiftBar v2)
+
+Both plugins detect the macOS appearance (`$OS_APPEARANCE`) and adapt colours accordingly. When running under SwiftBar v2, menu items use SF Symbols for a native look:
+
+| Status | Icon |
+|---|---|
+| ONLINE | `checkmark.circle.fill` (green) |
+| DEGRADED | `exclamationmark.triangle.fill` (yellow) |
+| FAULTED | `xmark.circle.fill` (red) |
+| Encrypted | `lock.fill` |
+| Scrub active | `arrow.clockwise.circle` |
+
+## Configuration
+
+Plugins read settings from `/usr/local/etc/zfs-das.conf` (created by `setup.sh`) or from defaults at the top of each plugin file.
+
+Key variables:
+
 ```bash
-# Quick status check
-./scripts/check-zfs-status.sh
-
-# Check specific pool
-./scripts/check-zfs-status.sh backup_pool
-
-# Use in monitoring scripts
-if ./scripts/check-zfs-status.sh; then
-    echo "All healthy"
-else
-    echo "Issues detected"
-fi
+POOL_NAME="mypool"           # ZFS pool to monitor
+ZFS_CMD="/usr/local/zfs/bin" # OpenZFS binary path
+ENCRYPTION_ENABLED=true      # Show encryption indicators
 ```
 
-**See:** [docs/USER_EXPERIENCE.md](file:///Users/ram/Documents/Projects/Public/macos-zfs-das/docs/USER_EXPERIENCE.md) for full documentation
+Override temporarily by setting env vars before opening SwiftBar, or edit the plugin file directly.
 
----
+## Health Checks and Alerting
 
-## Alert Channels
+### Automated Health Checks
+
+`scripts/health-check.sh` runs on a schedule (set up by `setup.sh`):
+
+```bash
+# Run manually
+sudo bash scripts/health-check.sh mypool
+
+# Check logs
+tail -f /var/log/zfs-healthcheck.log
+```
+
+Checks performed:
+- Pool health status (ONLINE / DEGRADED / FAULTED)
+- Available capacity (warns at 70%, critical at 85%)
+- Error counts (read, write, checksum)
+- Scrub age (warns if no scrub in 30 days)
+- Encryption key status
 
 ### macOS Notifications
 
-**Configuration:**
+Scripts send native macOS notifications via `osascript`:
+
+| Event | Notification level |
+|---|---|
+| Pool import failed | Critical (always sent) |
+| Encryption key error | Critical (always sent) |
+| Pool degraded | Warning (always sent) |
+| Capacity > 85% | Warning (always sent) |
+| Scrub complete | Success (optional) |
+
+Configure in `/usr/local/etc/zfs-das.conf`:
 ```bash
-# In configs/zfs-das.conf
 ENABLE_NOTIFICATIONS=true
-NOTIFICATION_SOUND="Basso"
+NOTIFY_ON_SUCCESS=false   # Set true to see success notifications
 ```
 
-**Notification Types:**
-- 🔴 **CRITICAL** - Immediate attention required
-- 🟡 **WARNING** - Should investigate soon
-- 🔵 **INFO** - Informational only
-
-**Example:**
-```
-Title: "Pool Health Critical"
-Message: "Pool 'media_pool' health is DEGRADED (not ONLINE).
-         Immediate attention required!"
-Sound: Basso
-```
-
----
-
-### Email Alerts
-
-**Configuration:**
-```bash
-# In configs/zfs-das.conf
-ENABLE_EMAIL=true
-EMAIL_ADDRESS="admin@example.com"
-EMAIL_SUBJECT_PREFIX="[ZFS-ALERT]"
-```
-
-**Prerequisites:**
-```bash
-# macOS mail command must be configured
-# Test with:
-echo "Test" | mail -s "Test" your@email.com
-```
-
-**Email Format:**
-```
-Subject: [ZFS-ALERT] Pool Capacity Critical
-From: root@your-mac.local
-To: admin@example.com
-
-Pool 'media_pool' is 87% full (critical threshold: 85%).
-Running out of space!
-
----
-Sent by ZFS DAS Health Monitor
-Time: 2024-12-13 18:00:00
-```
-
----
-
-### Log Files
-
-**Location:** `/var/log/`
-
-| Log File | Purpose | Rotation |
-|----------|---------|----------|
-| `zfs-automount.log` | Boot-time mounting | Daily |
-| `zfs-maintenance.log` | Monthly maintenance | Monthly |
-| `zfs-health-check.log` | Health checks | Daily |
-
-**Monitoring Logs:**
-```bash
-# Watch health check log
-tail -f /var/log/zfs-health-check.log
-
-# Show recent alerts
-grep "CRITICAL\|WARNING" /var/log/zfs-health-check.log | tail -20
-
-# Count alerts today
-grep "$(date +%Y-%m-%d)" /var/log/zfs-health-check.log | grep -c "CRITICAL\|WARNING"
-```
-
----
-
-## Monitoring Best Practices
-
-### 1. Choose Your Monitoring Level
-
-**Minimal (Default):**
-- SwiftBar basic monitor
-- Built-in health checks (6-hour interval)
-- macOS notifications only
-
-**Standard (Recommended):**
-- SwiftBar advanced monitor
-- Health checks with email alerts
-- Regular log review
-
-**Enterprise:**
-- SwiftBar advanced monitor
-- Health checks with email
-- Integration with monitoring platform (Prometheus/Grafana)
-- Custom alerting rules
-
----
-
-### 2. Configure Alert Thresholds
-
-Adjust thresholds based on your usage:
-
-**Conservative (safer, more alerts):**
-```bash
-CAPACITY_WARNING=60
-CAPACITY_CRITICAL=75
-ERROR_THRESHOLD=0  # Alert on any error
-SCRUB_MAX_AGE_DAYS=30
-```
-
-**Standard (balanced):**
-```bash
-CAPACITY_WARNING=70
-CAPACITY_CRITICAL=85
-ERROR_THRESHOLD=1
-SCRUB_MAX_AGE_DAYS=35
-```
-
-**Relaxed (fewer alerts):**
-```bash
-CAPACITY_WARNING=80
-CAPACITY_CRITICAL=90
-ERROR_THRESHOLD=5
-SCRUB_MAX_AGE_DAYS=45
-```
-
----
-
-### 3. Review Schedule
-
-Establish a regular review schedule:
-
-**Daily:**
-- Glance at SwiftBar menu bar
-- Check for notifications
-
-**Weekly:**
-- Review capacity trends
-- Check scrub status
-- Verify backups
-
-**Monthly:**
-- Review all logs
-- Validate encryption keys
-- Test recovery procedures
-- Review alert thresholds
-
-**Quarterly:**
-- Run security audit
-- Update documentation
-- Test disaster recovery
-
----
-
-## Troubleshooting Monitoring
-
-### SwiftBar Not Updating
-
-1. Check SwiftBar is running
-2. Verify plugin permissions (must be executable)
-3. Check plugin syntax:
-   ```bash
-   bash -n swiftbar/zfs-monitor.30s.sh
-   ```
-4. View plugin output manually:
-   ```bash
-   ./swiftbar/zfs-monitor.30s.sh
-   ```
-
-### No Health Check Alerts
-
-1. Check LaunchDaemon is loaded:
-   ```bash
-   sudo launchctl list | grep healthcheck
-   ```
-
-2. View recent health check logs:
-   ```bash
-   tail -50 /var/log/zfs-health-check.log
-   ```
-
-3. Test manually:
-   ```bash
-   sudo /usr/local/bin/health-check.sh
-   ```
-
-4. Verify notification settings:
-   ```bash
-   grep ENABLE_NOTIFICATIONS configs/zfs-das.conf
-   ```
-
-### Email Alerts Not Working
-
-1. Test mail command:
-   ```bash
-   echo "Test" | mail -s "Test Subject" your@email.com
-   ```
-
-2. Configure macOS mail (if needed):
-   ```bash
-   # May need to configure SMTP settings
-   # See: System Preferences → Internet Accounts
-   ```
-
-3. Check email address in config:
-   ```bash
-   grep EMAIL_ADDRESS configs/zfs-das.conf
-   ```
-
----
-
-## Advanced Monitoring
-
-### Integration with Prometheus
-
-Export metrics for Grafana dashboards:
-
-**Script:** (Future enhancement)
-```bash
-#!/bin/bash
-# zfs-exporter.sh
-# Exports ZFS metrics in Prometheus format
-
-echo "# HELP zfs_pool_health Pool health status"
-echo "# TYPE zfs_pool_health gauge"
-echo "zfs_pool_health{pool=\"media_pool\"} 1"  # 1=ONLINE, 0=not ONLINE
-
-echo "# HELP zfs_pool_capacity_percent Pool capacity percentage"
-echo "# TYPE zfs_pool_capacity_percent gauge"
-CAPACITY=$(zpool list -H -o capacity media_pool | tr -d '%')
-echo "zfs_pool_capacity_percent{pool=\"media_pool\"} $CAPACITY"
-```
-
-### Custom Alert Scripts
-
-Create custom alert conditions:
+## Real-Time Log Monitoring
 
 ```bash
-#!/bin/bash
-# custom-alert.sh
-# Alert if pool is > 80% AND has errors
+# Auto-mount events
+tail -f /var/log/zfs-automount.log
 
-CAPACITY=$(zpool list -H -o capacity media_pool | tr -d '%')
-ERRORS=$(zpool status media_pool | grep -c "errors:")
+# Health check events
+tail -f /var/log/zfs-healthcheck.log
 
-if [ "$CAPACITY" -gt 80 ] && [ "$ERRORS" -gt 0 ]; then
-    osascript -e 'display notification "Pool is full AND has errors!" with title "CRITICAL"'
-fi
+# Errors only
+tail -f /var/log/zfs-automount.log | grep "ERROR\|FATAL\|✗"
 ```
 
-### Slack/Discord Integration
+## Troubleshooting SwiftBar
 
-Send alerts to team channels:
-
+**Plugin not visible in menu bar:**
 ```bash
-# In health-check.sh, add webhook:
-send_slack_alert() {
-    local message="$1"
-    local webhook_url="YOUR_WEBHOOK_URL"
-    
-    curl -X POST -H 'Content-type: application/json' \
-        --data "{\"text\":\"$message\"}" \
-        "$webhook_url"
-}
+# Verify plugin is executable
+ls -la ~/Library/Application\ Support/SwiftBar/Plugins/
+
+chmod +x ~/Library/Application\ Support/SwiftBar/Plugins/zfs-monitor.30s.sh
+
+# Verify SwiftBar is running
+ps aux | grep SwiftBar
+open /Applications/SwiftBar.app
 ```
 
----
-
-## Monitoring Dashboard
-
-### SwiftBar Menu Display
-
-**Color Coding:**
-- 🟢 **Green** - All healthy (capacity < 70%)
-- 🟡 **Yellow** - Warning (capacity 70-85%)
-- 🔴 **Red** - Critical (capacity > 85% or errors)
-
-**Icons:**
-- ✓ - Healthy/normal
-- ⚠ - Warning
-- ✗ - Critical
-- ⟳ - In progress (scrub)
-- 🔒 - Encrypted
-
-**Example Display:**
-```
-Menu Bar:
-🟢 ZFS 45% ↗
-
-Dropdown:
-═══════════════════════════
-Pool: media_pool
-Health: ✓ ONLINE
-Capacity: 45% (4.5T / 10T)
-Last Scrub: 5 days ago ✓
-Errors: None ✓
-───────────────────────────
-Datasets:
-  data       🔒 4.5T
-  backups    🔒 2.1T
-  photos     🔒 1.2T
-───────────────────────────
-Time Machine: ✓ Active
-───────────────────────────
-Actions:
-  • Check Status
-  • Run Scrub
-  • View Logs
-  • Security Audit
-═══════════════════════════
-```
-
----
-
-## Quick Reference
-
-### Monitor Setup
+**Plugin shows error / no data:**
 ```bash
-# Install SwiftBar monitoring
-./scripts/setup-monitoring.sh
+# Run plugin directly in terminal to see output
+bash ~/Library/Application\ Support/SwiftBar/Plugins/zfs-monitor.30s.sh
 
-# Install health checks
-sudo cp scripts/health-check.sh /usr/local/bin/
-sudo cp configs/launchd/com.local.zfs.healthcheck.plist /Library/LaunchDaemons/
-sudo launchctl load /Library/LaunchDaemons/com.local.zfs.healthcheck.plist
+# Verify ZFS is installed and accessible
+/usr/local/zfs/bin/zpool list
 ```
 
-### Check Status
+**Re-install SwiftBar:**
 ```bash
-# Menu bar - Glance at SwiftBar
-# Quick check
-./scripts/check-zfs-status.sh
-
-# Detailed
-sudo zpool status -v media_pool
+bash scripts/install-swiftbar.sh
 ```
 
-### View Alerts
-```bash
-# Recent health check alerts
-grep "CRITICAL\|WARNING" /var/log/zfs-health-check.log | tail -20
+## See Also
 
-# Check notification history
-# System Preferences → Notifications → Check history
-```
-
-### Test Monitoring
-```bash
-# Test health check
-sudo /usr/local/bin/health-check.sh
-
-# Test status check
-./scripts/check-zfs-status.sh
-
-# Test SwiftBar plugin
-./swiftbar/zfs-monitor.30s.sh
-```
-
----
-
-## Summary
-
-**Monitoring Components:**
-- ✅ SwiftBar menu bar (real-time visual)
-- ✅ Automated health checks (proactive)
-- ✅ Status utility (on-demand)
-- ✅ macOS notifications (immediate)
-- ✅ Email alerts (remote)
-- ✅ Comprehensive logging (historical)
-
-**Alert Coverage:**
-- ✅ Pool health
-- ✅ Capacity warnings
-- ✅ Error detection
-- ✅ Scrub monitoring
-- ✅ Encryption status
-- ✅ Mount validation
-- ✅ Service status
-
-**Result:** Complete monitoring coverage with multiple alert channels! 🎯
+- [SETUP.md](./SETUP.md) — Initial pool setup
+- [MAINTENANCE.md](./MAINTENANCE.md) — Scrub scheduling and maintenance
+- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) — Common issues

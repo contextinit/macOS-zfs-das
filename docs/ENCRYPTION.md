@@ -43,14 +43,28 @@ This guide covers everything you need to know about encrypting your ZFS datasets
 
 ## Quick Start
 
-### Using the Setup Script
+### Using the Interactive Setup Wizard (Recommended)
+
+The easiest way to set up encryption is during the main setup wizard:
 
 ```bash
-# Run the encryption setup wizard
+bash scripts/setup.sh
+```
+
+In **Phase 5**, choose whether to enable encryption. The wizard:
+1. Generates a 256-bit AES key with `openssl rand`
+2. Saves it to `/etc/zfs/keys/<pool>.key` with `0400` permissions
+3. Displays a SHA-256 fingerprint and prompts you to confirm you have noted the key location
+4. Creates the pool with `encryption=aes-256-gcm` and `keyformat=raw`
+5. Configures the auto-mount LaunchDaemon to load the key at boot
+
+### Using the Standalone Encryption Script
+
+```bash
 sudo ./scripts/setup-encryption.sh
 ```
 
-The wizard will:
+The script will:
 1. Select your ZFS pool
 2. Choose datasets to encrypt
 3. Generate encryption keys
@@ -223,7 +237,7 @@ Child datasets inherit encryption from parent:
 sudo zfs create media_pool/data  # encrypted with its own key
 
 # Children automatically encrypted
-sud zfs create media_pool/data/photos      # encrypted (inherited)
+sudo zfs create media_pool/data/photos      # encrypted (inherited)
 sudo zfs create media_pool/data/documents  # encrypted (inherited)
 
 # Children can have their own keys
@@ -415,7 +429,7 @@ sudo zfs mount media_pool/data
 
 # 3. Restore keys from backup
 sudo mkdir -p /etc/zfs/keys
-sudo cp /Volumes/SecureBackup/zfs-keys-backup-*/  *.key /etc/zfs/keys/
+sudo cp /Volumes/SecureBackup/zfs-keys-backup-*/*.key /etc/zfs/keys/
 sudo chmod 700 /etc/zfs/keys
 sudo chmod 600 /etc/zfs/keys/*.key
 sudo chown -R root:wheel /etc/zfs/keys
@@ -441,7 +455,7 @@ sha256sum /etc/zfs/keys/media_pool_data.key
 
 # 2. Replace with backup
 sudo cp /Volumes/SecureBackup/media_pool_data.key /etc/zfs/keys/
-sudo chmod 600 /etc/zfs/ keys/media_pool_data.key
+sudo chmod 600 /etc/zfs/keys/media_pool_data.key
 
 # 3. Reload key
 sudo zfs unload-key media_pool/data

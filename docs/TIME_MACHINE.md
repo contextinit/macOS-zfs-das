@@ -16,13 +16,19 @@ ZFS makes an excellent Time Machine destination with benefits including:
 - macOS with network access to the ZFS server
 - AFP or SMB for file sharing
 
-## Quick Setup with Wizard
+## Quick Setup with the Main Wizard
 
-The easiest way is using our interactive wizard:
+The easiest way is through the interactive setup wizard. During **Phase 6**, the wizard asks for:
+- Time Machine computer name (used as the dataset name)
+- Quota size (e.g. `500G`)
 
-1. Navigate to `/wizards/timemachine` on the website
-2. Follow the step-by-step configuration
-3. Copy and run the generated commands
+The wizard then creates the dataset, sets properties, and configures sharing automatically.
+
+```bash
+bash scripts/setup.sh
+```
+
+Alternatively, use the web-based command generator at `/wizards/timemachine` on the project website — it produces the exact commands to paste into Terminal.
 
 ## Manual Configuration
 
@@ -56,9 +62,15 @@ sudo zfs create mypool/timemachine/imac
 sudo zfs set quota=500G mypool/timemachine/imac
 ```
 
-### Step 3: Configure AFP Sharing (Recommended for Time Machine)
+### Step 3: Configure Sharing
 
-**Install netatalk** (if not already installed):
+**Option A: SMB (recommended — built into macOS)**
+
+Enable file sharing in **System Settings → General → Sharing → File Sharing**, then add the Time Machine mount point as a shared folder. In the share's Advanced Options, enable "Share as a Time Machine backup destination".
+
+**Option B: AFP via netatalk** (third-party, for older macOS clients)
+
+Install netatalk:
 ```bash
 brew install netatalk
 ```

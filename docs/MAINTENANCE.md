@@ -4,6 +4,10 @@
 
 Comprehensive guide to ZFS maintenance operations including automated scheduling, manual triggers, and best practices.
 
+## Setup
+
+The `bash scripts/setup.sh` wizard configures automated maintenance during Phase 8. If you need to install maintenance components manually, see the sections below.
+
 ## Automated Maintenance
 
 ### Monthly Maintenance Script
@@ -197,7 +201,7 @@ exit 0  # Must exit 0 to allow maintenance to proceed
 
 **Configuration:**
 ```bash
-# In configs/zfs-das.conf
+# In /usr/local/etc/zfs-das.conf
 MAINTENANCE_PRE_HOOK="/usr/local/bin/pre-maintenance-hook.sh"
 ```
 
@@ -234,7 +238,7 @@ exit 0
 
 **Configuration:**
 ```bash
-# In configs/zfs-das.conf
+# In /usr/local/etc/zfs-das.conf
 MAINTENANCE_POST_HOOK="/usr/local/bin/post-maintenance-hook.sh"
 ```
 
@@ -346,7 +350,7 @@ mdutil -s /Volumes/media_pool
 
 **Timeout Configuration:**
 ```bash
-# In configs/zfs-das.conf
+# In /usr/local/etc/zfs-das.conf
 SCRUB_TIMEOUT=2880  # 48 hours (in minutes)
 ```
 
@@ -395,7 +399,7 @@ sudo /usr/local/bin/zfs-maintenance.sh
 **Verify Configuration:**
 ```bash
 # Check config
-grep EMAIL configs/zfs-das.conf
+grep EMAIL /usr/local/etc/zfs-das.conf
 
 # Test mail command
 echo "Test" | mail -s "Test" your@email.com

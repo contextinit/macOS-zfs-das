@@ -331,9 +331,10 @@ zfs-health     # Quick health check
    sudo ./scripts/security-audit.sh
    ```
 
-5. **Set Up Monitoring**
-   - Use SwiftBar for menu bar status
-   - Get visual feedback without terminal
+5. **Set Up SwiftBar Monitoring**
+   - Install via `bash scripts/install-swiftbar.sh` (no Homebrew needed)
+   - Choose `zfs-monitor` (standard) or `zfs-advanced` (ARC stats, trend arrows, snapshot management)
+   - Plugins support SF Symbols and dark/light mode on SwiftBar v2
 
 ### For Administrators
 
@@ -440,5 +441,6 @@ Potential UX improvements for future versions:
 - ✅ Clear error messages
 - ✅ Security feedback
 - ✅ Success/warning/error notifications
+- ✅ SwiftBar v2.0 plugins with SF Symbols, dark/light mode, ARC stats, trend arrows, snapshot management
 
-**Result:** Users now have complete visibility into ZFS operations with minimal effort!
+**Result:** Users now have complete visibility into ZFS operations with minimal effort.
