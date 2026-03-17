@@ -59,42 +59,27 @@ check_swiftbar() {
     fi
 }
 
-# Install SwiftBar
+# Install SwiftBar using the bundled install script
 install_swiftbar() {
     print_header "Installing SwiftBar"
-    
-    echo "SwiftBar is a powerful menu bar customization tool."
-    echo "We'll use it to display ZFS pool health and metrics."
+
+    echo "SwiftBar (MIT, Copyright 2020 Ameba Labs) will be downloaded"
+    echo "from the official GitHub Releases and installed to /Applications/."
+    echo "See THIRD-PARTY-LICENSES.md for the full license text."
     echo ""
-    
-    # Check if Homebrew is installed
-    if command -v brew &>/dev/null; then
-        print_info "Installing SwiftBar via Homebrew..."
-        brew install --cask swiftbar
-        
-        if [ $? -eq 0 ]; then
-            print_success "SwiftBar installed successfully"
-            return 0
-        else
-            print_error "Homebrew installation failed"
-            return 1
-        fi
+
+    local installer="$PROJECT_DIR/scripts/install-swiftbar.sh"
+    if [[ ! -x "$installer" ]]; then
+        print_error "install-swiftbar.sh not found or not executable: $installer"
+        return 1
+    fi
+
+    if bash "$installer" --plugin-dir "$SWIFTBAR_PLUGIN_DIR"; then
+        print_success "SwiftBar installed successfully"
+        return 0
     else
-        print_warning "Homebrew not found"
-        echo ""
-        echo "Please install SwiftBar manually:"
-        echo "  1. Visit: https://github.com/swiftbar/SwiftBar"
-        echo "  2. Download the latest release"
-        echo "  3. Move SwiftBar.app to /Applications/"
-        echo ""
-        read -p "Press Enter after installing SwiftBar..."
-        
-        if check_swiftbar; then
-            return 0
-        else
-            print_error "SwiftBar still not found"
-            return 1
-        fi
+        print_error "SwiftBar installation failed"
+        return 1
     fi
 }
 

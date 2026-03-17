@@ -86,7 +86,7 @@ if [ -d "/Applications/SwiftBar.app" ]; then
 else
     echo -e "${YELLOW}⊘ SKIP${NC} (not installed)"
     echo "   Required for menu bar monitoring"
-    echo "   Install: brew install swiftbar"
+    echo "   Install: bash scripts/install-swiftbar.sh"
     WARNINGS=$((WARNINGS + 1))
 fi
 

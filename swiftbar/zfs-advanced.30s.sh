@@ -1,491 +1,518 @@
 #!/bin/bash
-
+# zfs-advanced.30s.sh — ZFS Advanced Monitor for SwiftBar
+#
+# SwiftBar is MIT-licensed software by Ameba Labs.
+# https://github.com/swiftbar/SwiftBar — see THIRD-PARTY-LICENSES.md
+#
 # <xbar.title>ZFS Advanced Monitor</xbar.title>
 # <xbar.version>v2.0</xbar.version>
-# <xbar.author>Your Name</xbar.author>
-# <xbar.desc>Advanced ZFS monitoring with alerts, graphs, and detailed metrics</xbar.desc>
+# <xbar.author>contextinit</xbar.author>
+# <xbar.author.github>contextinit</xbar.author.github>
+# <xbar.desc>Advanced ZFS monitoring: ARC stats, capacity bars, trending, snapshot actions</xbar.desc>
 # <xbar.dependencies>openzfs</xbar.dependencies>
-
+# <xbar.abouturl>https://github.com/contextinit/macos-zfs-das</xbar.abouturl>
+#
 # <swiftbar.refreshInterval>30s</swiftbar.refreshInterval>
+# <swiftbar.runInBash>false</swiftbar.runInBash>
+# <swiftbar.hideAbout>true</swiftbar.hideAbout>
+# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
+# <swiftbar.hideLastUpdated>false</swiftbar.hideLastUpdated>
+# <swiftbar.hideDisablePlugin>false</swiftbar.hideDisablePlugin>
 
-# Load configuration
-CONFIG_LOADED=false
+set -uo pipefail
+
+# ────────────────────────────────────────────────────────────
+# Configuration — load from file, fall back to defaults
+# ────────────────────────────────────────────────────────────
+POOL_NAME="media_pool"
+ZFS_BIN_PATH="/usr/local/zfs/bin"
+TM_VOLUME_NAME="TimeMachine"
+CAPACITY_WARNING=70
+CAPACITY_CRITICAL=85
+FRAG_WARNING=30
+ERROR_THRESHOLD=0
+TREND_CACHE_DIR="$HOME/.zfs-monitor"
+
 for config_path in \
     "/usr/local/etc/zfs-das.conf" \
     "/etc/zfs-das.conf" \
     "$HOME/.config/zfs-das.conf"; do
-    if [ -f "$config_path" ]; then
+    if [[ -f "$config_path" ]]; then
         # shellcheck source=/dev/null
         source "$config_path"
-        CONFIG_LOADED=true
         break
     fi
 done
 
-# Configuration with fallback defaults
-if [ "$CONFIG_LOADED" = false ]; then
-    POOL_NAME="media_pool"
-    ZFS_BIN_PATH="/usr/local/zfs/bin"
-    CAPACITY_WARNING=70
-    CAPACITY_CRITICAL=85
-    ERROR_THRESHOLD=10
-    FRAG_WARNING=30
-    TREND_CACHE_DIR="$HOME/.zfs-monitor"
-fi
-
 ZPOOL="$ZFS_BIN_PATH/zpool"
 ZFS="$ZFS_BIN_PATH/zfs"
 
-# Colors
-COLOR_GREEN="#00C853"
-COLOR_YELLOW="#FFB300"
-COLOR_RED="#D50000"
-COLOR_BLUE="#2979FF"
-COLOR_GRAY="#616161"
-COLOR_PURPLE="#9C27B0"
+# ────────────────────────────────────────────────────────────
+# Colors — adaptive light/dark mode
+# ────────────────────────────────────────────────────────────
+if [[ "${OS_APPEARANCE:-Light}" == "Dark" ]]; then
+    C_GREEN="#69F0AE"
+    C_YELLOW="#FFD54F"
+    C_RED="#FF5252"
+    C_BLUE="#82B1FF"
+    C_GRAY="#9E9E9E"
+    C_PURPLE="#CE93D8"
+else
+    C_GREEN="#00796B"
+    C_YELLOW="#F57F17"
+    C_RED="#C62828"
+    C_BLUE="#1565C0"
+    C_GRAY="#616161"
+    C_PURPLE="#6A1B9A"
+fi
 
-# SF Symbols / Emoji
-ICON_HEALTHY="🟢"
-ICON_WARNING="🟡"
-ICON_ERROR="🔴"
-ICON_OFFLINE="⚫"
-ICON_CHART="📊"
-ICON_ALERT="⚠️"
-ICON_CHECK="✓"
-ICON_CROSS="✗"
+# ────────────────────────────────────────────────────────────
+# SF Symbols (SwiftBar v2 sfimage= support)
+# ────────────────────────────────────────────────────────────
+if [[ -n "${SWIFTBAR:-}" ]]; then
+    SYM_HEALTHY="checkmark.circle.fill"
+    SYM_WARNING="exclamationmark.triangle.fill"
+    SYM_ERROR="xmark.octagon.fill"
+    SYM_OFFLINE="circle.slash"
+fi
 
-# Cache directory for historical data
-CACHE_DIR="${TREND_CACHE_DIR:-$HOME/.zfs-monitor}"
+ICO_HEALTHY="🟢"
+ICO_WARNING="🟡"
+ICO_ERROR="🔴"
+ICO_OFFLINE="⚫"
+ICO_CHART="📊"
+ICO_CHECK="✓"
+ICO_CROSS="✗"
+ICO_SCRUB="🔍"
+
+# ────────────────────────────────────────────────────────────
+# Cache directory — use a file lock to prevent race conditions
+# ────────────────────────────────────────────────────────────
+CACHE_DIR="${TREND_CACHE_DIR}"
 mkdir -p "$CACHE_DIR"
+LOCK_FILE="$CACHE_DIR/.lock"
 
-# Functions
-check_pool_exists() {
-    $ZPOOL list "$POOL_NAME" &>/dev/null
+save_metric() {
+    local name="$1"
+    local value="$2"
+    local log="$CACHE_DIR/${name}.log"
+    local tmp="$CACHE_DIR/${name}.log.tmp"
+    (
+        flock -n 9 || return 0
+        echo "$(date +%s)|$value" >> "$log"
+        tail -100 "$log" > "$tmp" && mv "$tmp" "$log"
+    ) 9>"$LOCK_FILE"
 }
+
+get_trend() {
+    local name="$1"
+    local log="$CACHE_DIR/${name}.log"
+    [[ -f "$log" ]] || { echo "→"; return; }
+
+    local recent first last count
+    recent=$(tail -5 "$log" 2>/dev/null | awk -F'|' '{print $2}')
+    count=$(echo "$recent" | grep -c .)
+    [[ "$count" -lt 2 ]] && { echo "→"; return; }
+
+    first=$(echo "$recent" | head -1)
+    last=$(echo  "$recent" | tail -1)
+
+    if   [[ "$last" -gt "$first" ]]; then echo "↗"
+    elif [[ "$last" -lt "$first" ]]; then echo "↘"
+    else echo "→"
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────
+pool_exists() { "$ZPOOL" list "$POOL_NAME" &>/dev/null; }
 
 get_pool_state() {
-    if ! check_pool_exists; then
-        echo "OFFLINE"
-        return
-    fi
-    $ZPOOL status "$POOL_NAME" | grep "state:" | awk '{print $2}'
+    pool_exists || { echo "OFFLINE"; return; }
+    "$ZPOOL" status "$POOL_NAME" | awk '/state:/{print $2; exit}'
 }
 
-get_pool_capacity() {
-    if ! check_pool_exists; then
-        echo "0"
-        return
-    fi
-    $ZPOOL list -H -o capacity "$POOL_NAME" | tr -d '%'
-}
-
-get_pool_size_info() {
-    if ! check_pool_exists; then
-        echo "0|0|0"
-        return
-    fi
-    $ZPOOL list -H -o size,alloc,free "$POOL_NAME" | tr '\t' '|'
+get_capacity() {
+    pool_exists || { echo "0"; return; }
+    "$ZPOOL" list -H -o capacity "$POOL_NAME" | tr -d '%'
 }
 
 get_fragmentation() {
-    if ! check_pool_exists; then
-        echo "0"
-        return
-    fi
-    $ZPOOL list -H -o frag "$POOL_NAME" | tr -d '%'
+    pool_exists || { echo "0"; return; }
+    "$ZPOOL" list -H -o frag "$POOL_NAME" | tr -d '%'
 }
 
-get_error_counts() {
-    if ! check_pool_exists; then
-        echo "0|0|0"
-        return
-    fi
-    
-    local status=$($ZPOOL status "$POOL_NAME")
-    local read_err=$(echo "$status" | grep "errors:" | head -1 | grep -oE '[0-9]+' | head -1)
-    local write_err=$(echo "$status" | grep "errors:" | sed -n '2p' | grep -oE '[0-9]+' | head -1)
-    local cksum_err=$(echo "$status" | grep "errors:" | sed -n '3p' | grep -oE '[0-9]+' | head -1)
-    
-    # Default to 0 if grep returns nothing
-    read_err=${read_err:-0}
-    write_err=${write_err:-0}
-    cksum_err=${cksum_err:-0}
-    
-    echo "${read_err}|${write_err}|${cksum_err}"
+state_icon() {
+    case "$1" in
+        ONLINE)           echo "$ICO_HEALTHY" ;;
+        DEGRADED)         echo "$ICO_WARNING" ;;
+        FAULTED|UNAVAIL)  echo "$ICO_ERROR"   ;;
+        *)                echo "$ICO_OFFLINE" ;;
+    esac
 }
 
-get_scrub_info() {
-    if ! check_pool_exists; then
-        echo "never|0|0"
-        return
-    fi
-    
-    local scrub_line=$($ZPOOL status "$POOL_NAME" | grep "scan:")
-    
-    if echo "$scrub_line" | grep -q "scrub in progress"; then
-        local percent=$(echo "$scrub_line" | grep -oE '[0-9]+\.[0-9]+' | head -1)
-        local to_go=$(echo "$scrub_line" | grep -oE '[0-9]+:[0-9]+:[0-9]+ to go')
-        echo "in_progress|${percent}|${to_go}"
-    elif echo "$scrub_line" | grep -q "scrub repaired"; then
-        local repaired=$(echo "$scrub_line" | grep -oE 'repaired [^ ]+' | awk '{print $2}')
-        local date=$(echo "$scrub_line" | grep -oE '[A-Z][a-z]+ [A-Z][a-z]+ [0-9]+ [0-9]+:[0-9]+:[0-9]+ [0-9]+')
-        echo "completed|${repaired}|${date}"
-    else
-        echo "never|0|0"
+cap_color() {
+    local c=$1
+    if   [[ "$c" -lt "$CAPACITY_WARNING"  ]]; then echo "$C_GREEN"
+    elif [[ "$c" -lt "$CAPACITY_CRITICAL" ]]; then echo "$C_YELLOW"
+    else                                           echo "$C_RED"
     fi
 }
 
-get_dataset_info() {
-    if ! check_pool_exists; then
-        return
-    fi
-    $ZFS list -H -o name,used,avail,refer,compression,compressratio,mounted 2>/dev/null
+# Unicode capacity bar (20-char wide)
+capacity_bar() {
+    local pct=$1
+    local width=20
+    local filled=$(( pct * width / 100 ))
+    local empty=$(( width - filled ))
+    local bar=""
+    local i
+    for (( i=0; i<filled; i++ )); do bar+="█"; done
+    for (( i=0; i<empty;  i++ )); do bar+="░"; done
+    echo "$bar"
 }
 
-get_snapshot_count() {
-    if ! check_pool_exists; then
-        echo "0"
-        return
-    fi
-    $ZFS list -t snapshot -H 2>/dev/null | wc -l | tr -d ' '
-}
-
-check_encryption_status() {
-    if ! check_pool_exists; then
-        echo "N/A"
-        return
-    fi
-    
-    local enc_status=$($ZFS get -H -o value encryption "$POOL_NAME/backups" 2>/dev/null)
-    if [ "$enc_status" = "off" ]; then
-        echo "Not Encrypted"
-    else
-        local key_status=$($ZFS get -H -o value keystatus "$POOL_NAME/backups" 2>/dev/null)
-        echo "Encrypted ($key_status)"
-    fi
-}
-
+# ARC stats via macOS sysctl
 get_arc_stats() {
-    if [ -f "/proc/spl/kstat/zfs/arcstats" ]; then
-        # Linux style
-        local arc_size=$(grep "^size" /proc/spl/kstat/zfs/arcstats | awk '{print $3}')
-        local arc_max=$(grep "^c_max" /proc/spl/kstat/zfs/arcstats | awk '{print $3}')
-    else
-        # macOS - use sysctl if available
-        local arc_size=$(/usr/sbin/sysctl -n kstat.zfs.misc.arcstats.size 2>/dev/null || echo "0")
-        local arc_max=$(/usr/sbin/sysctl -n kstat.zfs.misc.arcstats.c_max 2>/dev/null || echo "0")
-    fi
-    
-    if [ "$arc_max" -gt 0 ]; then
-        local arc_pct=$((arc_size * 100 / arc_max))
+    local arc_size arc_max arc_pct
+    arc_size=$(/usr/sbin/sysctl -n kstat.zfs.misc.arcstats.size  2>/dev/null || echo "0")
+    arc_max=$( /usr/sbin/sysctl -n kstat.zfs.misc.arcstats.c_max 2>/dev/null || echo "0")
+
+    if [[ "$arc_max" -gt 0 ]]; then
+        arc_pct=$(( arc_size * 100 / arc_max ))
         echo "${arc_size}|${arc_max}|${arc_pct}"
     else
         echo "0|0|0"
     fi
 }
 
+# Human-readable bytes (integer arithmetic only — no bc dependency)
 format_bytes() {
-    local bytes=$1
-    if [ "$bytes" -ge 1099511627776 ]; then
-        echo "$(echo "scale=2; $bytes / 1099511627776" | bc)TB"
-    elif [ "$bytes" -ge 1073741824 ]; then
-        echo "$(echo "scale=2; $bytes / 1073741824" | bc)GB"
-    elif [ "$bytes" -ge 1048576 ]; then
-        echo "$(echo "scale=2; $bytes / 1048576" | bc)MB"
+    local b=$1
+    if   [[ "$b" -ge 1099511627776 ]]; then echo "$(( b / 1099511627776 ))TB"
+    elif [[ "$b" -ge 1073741824    ]]; then echo "$(( b / 1073741824    ))GB"
+    elif [[ "$b" -ge 1048576       ]]; then echo "$(( b / 1048576       ))MB"
+    else                                    echo "${b}B"
+    fi
+}
+
+get_scrub_info() {
+    pool_exists || { echo "never|0|"; return; }
+    local line
+    line=$("$ZPOOL" status "$POOL_NAME" | grep "scan:")
+    if echo "$line" | grep -q "scrub in progress"; then
+        local pct togo
+        pct=$(echo  "$line" | grep -oE '[0-9]+\.[0-9]+%'             | head -1)
+        togo=$(echo "$line" | grep -oE '[0-9]+:[0-9]+:[0-9]+ to go'  | head -1)
+        echo "in_progress|${pct}|${togo}"
+    elif echo "$line" | grep -q "scrub repaired"; then
+        local repaired dt
+        repaired=$(echo "$line" | grep -oE 'repaired [^ ]+'                          | awk '{print $2}')
+        dt=$(echo        "$line" | grep -oE '[A-Z][a-z]+ [A-Z][a-z]+ +[0-9]+ [0-9:]+' | head -1)
+        echo "completed|${repaired}|${dt}"
     else
-        echo "${bytes}B"
+        echo "never|0|"
     fi
 }
 
-create_capacity_bar() {
-    local percent=$1
-    local width=20
-    local filled=$((percent * width / 100))
-    local empty=$((width - filled))
-    
-    local bar=""
-    for ((i=0; i<filled; i++)); do bar+="█"; done
-    for ((i=0; i<empty; i++)); do bar+="░"; done
-    
-    echo "$bar"
+get_snapshot_count() {
+    pool_exists || { echo "0"; return; }
+    "$ZFS" list -t snapshot -H -r "$POOL_NAME" 2>/dev/null | wc -l | tr -d ' '
 }
 
-save_metric() {
-    local metric_name=$1
-    local value=$2
-    echo "$(date +%s)|$value" >> "$CACHE_DIR/${metric_name}.log"
-    
-    # Keep only last 100 entries
-    tail -100 "$CACHE_DIR/${metric_name}.log" > "$CACHE_DIR/${metric_name}.log.tmp"
-    mv "$CACHE_DIR/${metric_name}.log.tmp" "$CACHE_DIR/${metric_name}.log"
-}
-
-get_trend() {
-    local metric_name=$1
-    
-    if [ ! -f "$CACHE_DIR/${metric_name}.log" ]; then
-        echo "→"
-        return
-    fi
-    
-    local recent=$(tail -5 "$CACHE_DIR/${metric_name}.log" | awk -F'|' '{print $2}')
-    local count=$(echo "$recent" | wc -l)
-    
-    if [ "$count" -lt 2 ]; then
-        echo "→"
-        return
-    fi
-    
-    local first=$(echo "$recent" | head -1)
-    local last=$(echo "$recent" | tail -1)
-    
-    if [ "$last" -gt "$first" ]; then
-        echo "↗"
-    elif [ "$last" -lt "$first" ]; then
-        echo "↘"
+check_encryption() {
+    pool_exists || { echo "N/A"; return; }
+    local enc
+    enc=$("$ZFS" get -H -o value encryption "$POOL_NAME" 2>/dev/null || echo "off")
+    if [[ "$enc" == "off" ]]; then
+        echo "Disabled"
     else
-        echo "→"
+        local ks
+        ks=$("$ZFS" get -H -o value keystatus "$POOL_NAME" 2>/dev/null || echo "unknown")
+        echo "AES-256 ($ks)"
     fi
 }
 
-# Main execution
+# ────────────────────────────────────────────────────────────
+# Gather data
+# ────────────────────────────────────────────────────────────
 STATE=$(get_pool_state)
-CAPACITY=$(get_pool_capacity)
+CAPACITY=$(get_capacity)
 FRAG=$(get_fragmentation)
-IFS='|' read -r READ_ERR WRITE_ERR CKSUM_ERR <<< "$(get_error_counts)"
-TOTAL_ERRORS=$((READ_ERR + WRITE_ERR + CKSUM_ERR))
 
-# Save metrics for trending
-save_metric "capacity" "$CAPACITY"
+# Pull errors from pool status output
+STATUS_OUT=$("$ZPOOL" status "$POOL_NAME" 2>/dev/null || true)
+POOL_LINE=$(echo "$STATUS_OUT" | awk -v p="$POOL_NAME" '$1==p {print; exit}')
+R_ERR=$(echo "$POOL_LINE" | awk '{print $3+0}')
+W_ERR=$(echo "$POOL_LINE" | awk '{print $4+0}')
+C_ERR=$(echo "$POOL_LINE" | awk '{print $5+0}')
+TOTAL_ERRORS=$(( R_ERR + W_ERR + C_ERR ))
+
+# Save trend metrics (non-blocking via lock)
+save_metric "capacity"      "$CAPACITY"
 save_metric "fragmentation" "$FRAG"
-save_metric "errors" "$TOTAL_ERRORS"
+save_metric "errors"        "$TOTAL_ERRORS"
 
-# Determine overall health
-HEALTH_ICON="$ICON_HEALTHY"
-HEALTH_COLOR="$COLOR_GREEN"
-ALERT_TEXT=""
+# ────────────────────────────────────────────────────────────
+# Determine overall health for menu bar
+# ────────────────────────────────────────────────────────────
+HEALTH_ICO="$ICO_HEALTHY"
+HEALTH_CLR="$C_GREEN"
+ALERT_TXT=""
 
-if [ "$STATE" != "ONLINE" ]; then
-    HEALTH_ICON="$ICON_ERROR"
-    HEALTH_COLOR="$COLOR_RED"
-    ALERT_TEXT="Pool $STATE"
-elif [ "$TOTAL_ERRORS" -gt "$ERROR_THRESHOLD" ]; then
-    HEALTH_ICON="$ICON_ERROR"
-    HEALTH_COLOR="$COLOR_RED"
-    ALERT_TEXT="$TOTAL_ERRORS Errors"
-elif [ "$CAPACITY" -ge "$CAPACITY_CRITICAL" ]; then
-    HEALTH_ICON="$ICON_WARNING"
-    HEALTH_COLOR="$COLOR_RED"
-    ALERT_TEXT="${CAPACITY}% Full"
-elif [ "$CAPACITY" -ge "$CAPACITY_WARNING" ] || [ "$FRAG" -ge "$FRAG_WARNING" ]; then
-    HEALTH_ICON="$ICON_WARNING"
-    HEALTH_COLOR="$COLOR_YELLOW"
-    [ "$CAPACITY" -ge "$CAPACITY_WARNING" ] && ALERT_TEXT="${CAPACITY}% Used"
+if   [[ "$STATE" != "ONLINE" ]]; then
+    HEALTH_ICO="$ICO_ERROR";   HEALTH_CLR="$C_RED";    ALERT_TXT="Pool $STATE"
+elif [[ "$TOTAL_ERRORS" -gt "$ERROR_THRESHOLD" ]]; then
+    HEALTH_ICO="$ICO_ERROR";   HEALTH_CLR="$C_RED";    ALERT_TXT="${TOTAL_ERRORS} Errors"
+elif [[ "$CAPACITY" -ge "$CAPACITY_CRITICAL" ]]; then
+    HEALTH_ICO="$ICO_WARNING"; HEALTH_CLR="$C_RED";    ALERT_TXT="${CAPACITY}% Full"
+elif [[ "$CAPACITY" -ge "$CAPACITY_WARNING" || "$FRAG" -ge "$FRAG_WARNING" ]]; then
+    HEALTH_ICO="$ICO_WARNING"; HEALTH_CLR="$C_YELLOW"
+    [[ "$CAPACITY" -ge "$CAPACITY_WARNING" ]] && ALERT_TXT="${CAPACITY}% Used"
 fi
 
-# Menu bar display
-if [ -n "$ALERT_TEXT" ]; then
-    echo "$HEALTH_ICON $ALERT_TEXT | color=$HEALTH_COLOR"
+# ────────────────────────────────────────────────────────────
+# Menu bar line
+# ────────────────────────────────────────────────────────────
+if [[ -n "${SWIFTBAR:-}" && -n "${SYM_HEALTHY:-}" ]]; then
+    case "$STATE" in
+        ONLINE)   MB_SYM="$SYM_HEALTHY" ;;
+        DEGRADED) MB_SYM="$SYM_WARNING" ;;
+        OFFLINE)  MB_SYM="$SYM_OFFLINE" ;;
+        *)        MB_SYM="$SYM_ERROR"   ;;
+    esac
+    if [[ -n "$ALERT_TXT" ]]; then
+        echo "ZFS $ALERT_TXT | sfimage=$MB_SYM color=$HEALTH_CLR"
+    else
+        echo "$POOL_NAME ${CAPACITY}% | sfimage=$MB_SYM color=$HEALTH_CLR"
+    fi
 else
-    echo "$HEALTH_ICON $POOL_NAME ${CAPACITY}% | color=$HEALTH_COLOR"
+    if [[ -n "$ALERT_TXT" ]]; then
+        echo "$HEALTH_ICO $ALERT_TXT | color=$HEALTH_CLR"
+    else
+        echo "$HEALTH_ICO $POOL_NAME ${CAPACITY}% | color=$HEALTH_CLR"
+    fi
 fi
 
 echo "---"
 
-# Check if pool is offline
-if [ "$STATE" = "OFFLINE" ]; then
-    echo "❌ Pool Not Imported | color=$COLOR_RED size=14"
+# ────────────────────────────────────────────────────────────
+# Offline shortcut
+# ────────────────────────────────────────────────────────────
+if [[ "$STATE" == "OFFLINE" ]]; then
+    echo "Pool Not Imported | color=$C_RED size=14"
     echo "---"
     echo "Import Pool | bash=$ZPOOL param1=import param2=-d param3=/dev param4=$POOL_NAME terminal=true refresh=true"
     echo "Refresh | refresh=true"
     exit 0
 fi
 
-# ===== STATUS OVERVIEW =====
-echo "📊 Status Overview"
-echo "--State: $STATE | color=$([ "$STATE" = "ONLINE" ] && echo "$COLOR_GREEN" || echo "$COLOR_RED")"
+# ────────────────────────────────────────────────────────────
+# Status Overview
+# ────────────────────────────────────────────────────────────
+echo "$ICO_CHART Status Overview"
+STATE_CLR=$([ "$STATE" = "ONLINE" ] && echo "$C_GREEN" || echo "$C_RED")
+echo "--State: $STATE | color=$STATE_CLR"
 
-# Capacity with trend
+# Capacity with trend + bar
 CAP_TREND=$(get_trend "capacity")
-CAP_BAR=$(create_capacity_bar "$CAPACITY")
-CAP_COLOR=$([ "$CAPACITY" -lt "$CAPACITY_WARNING" ] && echo "$COLOR_GREEN" || [ "$CAPACITY" -lt "$CAPACITY_CRITICAL" ] && echo "$COLOR_YELLOW" || echo "$COLOR_RED")
-echo "--Capacity: ${CAPACITY}% $CAP_TREND | color=$CAP_COLOR"
-echo "----$CAP_BAR | font=Menlo size=10"
+CAP_CLR=$(cap_color "$CAPACITY")
+CAP_BAR=$(capacity_bar "$CAPACITY")
+echo "--Capacity: ${CAPACITY}% $CAP_TREND | color=$CAP_CLR"
+echo "----$CAP_BAR | font=Menlo size=10 color=$CAP_CLR"
 
-IFS='|' read -r SIZE ALLOC FREE <<< "$(get_pool_size_info)"
-echo "----Size: $SIZE | Total: $ALLOC used, $FREE free"
+IFS=$'\t' read -r P_SIZE P_ALLOC P_FREE < <("$ZPOOL" list -H -o size,alloc,free "$POOL_NAME")
+echo "----Total: $P_SIZE   Used: $P_ALLOC   Free: $P_FREE"
 
 # Fragmentation with trend
 FRAG_TREND=$(get_trend "fragmentation")
-FRAG_COLOR=$([ "$FRAG" -lt "$FRAG_WARNING" ] && echo "$COLOR_GREEN" || echo "$COLOR_YELLOW")
-echo "--Fragmentation: ${FRAG}% $FRAG_TREND | color=$FRAG_COLOR"
+FRAG_CLR=$([ "$FRAG" -lt "$FRAG_WARNING" ] && echo "$C_GREEN" || echo "$C_YELLOW")
+echo "--Fragmentation: ${FRAG}% $FRAG_TREND | color=$FRAG_CLR"
 
 # Errors with trend
 ERR_TREND=$(get_trend "errors")
-ERR_COLOR=$([ "$TOTAL_ERRORS" -eq 0 ] && echo "$COLOR_GREEN" || echo "$COLOR_RED")
-echo "--Errors: $TOTAL_ERRORS $ERR_TREND | color=$ERR_COLOR"
-if [ "$TOTAL_ERRORS" -gt 0 ]; then
-    echo "----Read: $READ_ERR, Write: $WRITE_ERR, Checksum: $CKSUM_ERR | font=Monaco size=11"
+ERR_CLR=$([ "$TOTAL_ERRORS" -eq 0 ] && echo "$C_GREEN" || echo "$C_RED")
+echo "--Errors: $TOTAL_ERRORS $ERR_TREND | color=$ERR_CLR"
+if [[ "$TOTAL_ERRORS" -gt 0 ]]; then
+    echo "----Read: $R_ERR   Write: $W_ERR   Cksum: $C_ERR | font=Monaco size=11 color=$C_RED"
     echo "----View Details | bash=$ZPOOL param1=status param2=-v param3=$POOL_NAME terminal=true"
 fi
 
-# ===== DRIVE STATUS =====
+# ────────────────────────────────────────────────────────────
+# Drive Status
+# ────────────────────────────────────────────────────────────
 echo "---"
-echo "💿 Drive Status (RAIDZ1)"
+echo "💿 Drive Status"
 
-DRIVE_INFO=$($ZPOOL status "$POOL_NAME" | grep -A 20 "raidz1-0")
-echo "$DRIVE_INFO" | grep "disk[0-9]" | while read -r line; do
-    DISK=$(echo "$line" | awk '{print $1}')
+while IFS= read -r line; do
+    DISK=$(echo   "$line" | awk '{print $1}')
     DSTATE=$(echo "$line" | awk '{print $2}')
-    DREAD=$(echo "$line" | awk '{print $3}')
-    DWRITE=$(echo "$line" | awk '{print $4}')
-    DCKSUM=$(echo "$line" | awk '{print $5}')
-    
-    DISK_ICON=$([ "$DSTATE" = "ONLINE" ] && echo "$ICON_HEALTHY" || echo "$ICON_ERROR")
-    DISK_COLOR=$([ "$DSTATE" = "ONLINE" ] && echo "$COLOR_GREEN" || echo "$COLOR_RED")
-    
-    echo "--$DISK_ICON $DISK | color=$DISK_COLOR"
-    echo "----State: $DSTATE"
-    
-    if [ "$DREAD" != "0" ] || [ "$DWRITE" != "0" ] || [ "$DCKSUM" != "0" ]; then
-        echo "----Errors: R:$DREAD W:$DWRITE C:$DCKSUM | color=$COLOR_RED"
-    else
-        echo "----Errors: None $ICON_CHECK | color=$COLOR_GREEN"
-    fi
-done
+    DERR_R=$(echo "$line" | awk '{print $3+0}')
+    DERR_W=$(echo "$line" | awk '{print $4+0}')
+    DERR_C=$(echo "$line" | awk '{print $5+0}')
 
-# ===== DATASETS =====
+    DISK_ICO=$(state_icon "$DSTATE")
+    DISK_CLR=$([ "$DSTATE" = "ONLINE" ] && echo "$C_GREEN" || echo "$C_RED")
+
+    echo "--$DISK_ICO $DISK | color=$DISK_CLR"
+    echo "----State: $DSTATE"
+    if [[ "$DERR_R" -ne 0 || "$DERR_W" -ne 0 || "$DERR_C" -ne 0 ]]; then
+        echo "----Errors: R:${DERR_R} W:${DERR_W} C:${DERR_C} | color=$C_RED"
+    else
+        echo "----Errors: None $ICO_CHECK | color=$C_GREEN"
+    fi
+done < <(echo "$STATUS_OUT" | grep -E "^\s+disk[0-9]" | sed 's/^[[:space:]]*//')
+
+# ────────────────────────────────────────────────────────────
+# Datasets & Compression
+# ────────────────────────────────────────────────────────────
 echo "---"
 echo "📁 Datasets & Compression"
 
-get_dataset_info | while IFS=$'\t' read -r name used avail refer comp ratio mounted; do
-    if [ "$name" != "$POOL_NAME" ]; then
-        DS_ICON="📁"
-        [ "$(basename "$name")" = "backups" ] && DS_ICON="💾"
-        [ "$(basename "$name")" = "data" ] && DS_ICON="📦"
-        
-        MOUNT_ICON=$([ "$mounted" = "yes" ] && echo "$ICON_CHECK" || echo "$ICON_CROSS")
-        
-        echo "--$DS_ICON $(basename "$name") $MOUNT_ICON"
-        echo "----Used: $used (Referenced: $refer)"
-        echo "----Available: $avail"
-        echo "----Compression: $comp (Ratio: $ratio)"
-    fi
-done
+while IFS=$'\t' read -r name used avail refer comp ratio mounted; do
+    [[ "$name" == "$POOL_NAME" ]] && continue
+    DS_ICO="📁"
+    [[ "$(basename "$name")" == "backups"    ]] && DS_ICO="💾"
+    [[ "$(basename "$name")" == "data"       ]] && DS_ICO="📦"
+    [[ "$(basename "$name")" == "timemachine" ]] && DS_ICO="⏱"
 
-# Encryption status
-ENC_STATUS=$(check_encryption_status)
+    MOUNT_ICO=$([ "$mounted" = "yes" ] && echo "$ICO_CHECK" || echo "$ICO_CROSS")
+    echo "--$DS_ICO $(basename "$name") $MOUNT_ICO"
+    echo "----Used: $used   Referenced: $refer"
+    echo "----Available: $avail"
+    echo "----Compression: $comp   Ratio: $ratio"
+done < <("$ZFS" list -H -o name,used,avail,refer,compression,compressratio,mounted -r "$POOL_NAME" 2>/dev/null)
+
+# ────────────────────────────────────────────────────────────
+# Encryption
+# ────────────────────────────────────────────────────────────
+ENC_STATUS=$(check_encryption)
 echo "---"
 echo "🔐 Encryption"
-echo "--Status: $ENC_STATUS"
+ENC_CLR=$(echo "$ENC_STATUS" | grep -q "AES" && echo "$C_GREEN" || echo "$C_GRAY")
+echo "--Status: $ENC_STATUS | color=$ENC_CLR"
 
-# Snapshot count
+# ────────────────────────────────────────────────────────────
+# Snapshots
+# ────────────────────────────────────────────────────────────
 SNAP_COUNT=$(get_snapshot_count)
 echo "---"
 echo "📸 Snapshots"
 echo "--Count: $SNAP_COUNT"
-if [ "$SNAP_COUNT" -gt 0 ]; then
-    echo "--List Snapshots | bash=$ZFS param1=list param2=-t param3=snapshot terminal=true"
+if [[ "$SNAP_COUNT" -gt 0 ]]; then
+    echo "--List Snapshots   | bash=$ZFS param1=list param2=-t param3=snapshot param4=-r param5=$POOL_NAME terminal=true"
+    echo "--Delete Oldest    | bash=$ZFS param1=destroy param2=$(\"$ZFS\" list -H -t snapshot -o name -r \"$POOL_NAME\" 2>/dev/null | head -1) terminal=true refresh=true"
 fi
+echo "--Create Snapshot  | bash=$ZFS param1=snapshot param2=${POOL_NAME}@manual-$(date +%Y%m%d-%H%M%S) terminal=true refresh=true"
 
-# ===== SCRUB STATUS =====
+# ────────────────────────────────────────────────────────────
+# Scrub
+# ────────────────────────────────────────────────────────────
 echo "---"
-echo "🔍 Scrub Status"
+echo "$ICO_SCRUB Scrub"
 
-IFS='|' read -r SCRUB_STATE SCRUB_DATA SCRUB_INFO <<< "$(get_scrub_info)"
+IFS='|' read -r SCRUB_STATE SCRUB_DATA SCRUB_INFO < <(get_scrub_info)
 
 case "$SCRUB_STATE" in
-    "in_progress")
-        echo "--$ICON_SCRUB In Progress: ${SCRUB_DATA}% | color=$COLOR_BLUE"
+    in_progress)
+        echo "--$ICO_SCRUB In Progress: $SCRUB_DATA | color=$C_BLUE"
         echo "----Time remaining: $SCRUB_INFO"
         echo "--Cancel Scrub | bash=$ZPOOL param1=scrub param2=-s param3=$POOL_NAME terminal=true refresh=true"
         ;;
-    "completed")
-        echo "--$ICON_CHECK Last Completed: $SCRUB_INFO | color=$COLOR_GREEN"
+    completed)
+        echo "--$ICO_CHECK Last: $SCRUB_INFO | color=$C_GREEN"
         echo "----Repaired: $SCRUB_DATA"
         echo "--Start New Scrub | bash=$ZPOOL param1=scrub param2=$POOL_NAME terminal=true refresh=true"
         ;;
-    "never")
-        echo "--$ICON_WARNING Never Run | color=$COLOR_YELLOW"
+    never)
+        echo "--$ICO_WARNING Never Run | color=$C_YELLOW"
         echo "--Start Scrub | bash=$ZPOOL param1=scrub param2=$POOL_NAME terminal=true refresh=true"
         ;;
 esac
 
-# ===== ARC STATS =====
+# ────────────────────────────────────────────────────────────
+# ARC Cache
+# ────────────────────────────────────────────────────────────
 echo "---"
 echo "💾 ARC Cache"
 
-IFS='|' read -r ARC_SIZE ARC_MAX ARC_PCT <<< "$(get_arc_stats)"
-if [ "$ARC_MAX" -gt 0 ]; then
+IFS='|' read -r ARC_SIZE ARC_MAX ARC_PCT < <(get_arc_stats)
+if [[ "$ARC_MAX" -gt 0 ]]; then
     ARC_SIZE_FMT=$(format_bytes "$ARC_SIZE")
     ARC_MAX_FMT=$(format_bytes "$ARC_MAX")
+    ARC_BAR=$(capacity_bar "$ARC_PCT")
     echo "--Size: $ARC_SIZE_FMT / $ARC_MAX_FMT (${ARC_PCT}%)"
-    ARC_BAR=$(create_capacity_bar "$ARC_PCT")
-    echo "----$ARC_BAR | font=Menlo size=10"
+    echo "----$ARC_BAR | font=Menlo size=10 color=$C_BLUE"
 else
-    echo "--Info not available"
+    echo "--Info not available | color=$C_GRAY"
 fi
 
-# ===== TIME MACHINE =====
+# ────────────────────────────────────────────────────────────
+# Time Machine
+# ────────────────────────────────────────────────────────────
 echo "---"
-echo "⏱️ Time Machine"
+echo "⏱ Time Machine"
 
-TM_VOL="${TM_VOLUME_NAME:-RMMacMM4}"
+TM_VOL="${TM_VOLUME_NAME}"
 if mount | grep -q "$TM_VOL"; then
-    echo "--$ICON_CHECK Backup Volume Mounted | color=$COLOR_GREEN"
-    
+    echo "--$ICO_CHECK Volume Mounted | color=$C_GREEN"
+
     if tmutil destinationinfo 2>/dev/null | grep -q "$TM_VOL"; then
-        TM_RUNNING=$(tmutil status 2>/dev/null | grep "Running = 1")
-        
-        if [ -n "$TM_RUNNING" ]; then
-            TM_PERCENT=$(tmutil status 2>/dev/null | grep "Percent" | grep -oE '[0-9]+\.[0-9]+' | head -1)
-            echo "--$ICON_SCRUB Backup in Progress: ${TM_PERCENT}% | color=$COLOR_BLUE"
+        TM_RUNNING=$(tmutil status 2>/dev/null | grep "Running = 1" || true)
+        if [[ -n "$TM_RUNNING" ]]; then
+            TM_PCT=$(tmutil status 2>/dev/null | grep -oE 'Percent = [0-9.]+' | awk '{print $3}')
+            echo "--$ICO_SCRUB Backup in Progress: ${TM_PCT}% | color=$C_BLUE"
             echo "--Stop Backup | bash=/usr/bin/tmutil param1=stopbackup terminal=false refresh=true"
         else
-            LAST_BACKUP=$(tmutil latestbackup 2>/dev/null)
-            if [ -n "$LAST_BACKUP" ]; then
-                BACKUP_DATE=$(basename "$LAST_BACKUP")
-                echo "--Last Backup: $BACKUP_DATE | color=$COLOR_GREEN"
-            fi
-            echo "--Start Backup | bash=/usr/bin/tmutil param1=startbackup terminal=false refresh=true"
+            LAST_BACKUP=$(tmutil latestbackup 2>/dev/null || true)
+            [[ -n "$LAST_BACKUP" ]] && echo "--Last: $(basename "$LAST_BACKUP") | color=$C_GREEN"
+            echo "--Start Backup Now | bash=/usr/bin/tmutil param1=startbackup terminal=false refresh=true"
         fi
-        
         echo "--View Status | bash=/usr/bin/tmutil param1=status terminal=true"
     else
-        echo "--$ICON_WARNING Not Configured | color=$COLOR_YELLOW"
+        echo "--$ICO_WARNING Not Configured | color=$C_YELLOW"
     fi
 else
-    echo "--$ICON_CROSS Not Mounted | color=$COLOR_RED"
+    echo "--$ICO_CROSS Not Mounted | color=$C_RED"
 fi
 
-# ===== PERFORMANCE =====
+# ────────────────────────────────────────────────────────────
+# Performance
+# ────────────────────────────────────────────────────────────
 echo "---"
 echo "📈 Performance"
-echo "--Current I/O Stats | bash=$ZPOOL param1=iostat param2=$POOL_NAME param3=2 param4=5 terminal=true"
-echo "--Detailed I/O | bash=$ZPOOL param1=iostat param2=-v param3=$POOL_NAME param4=1 param5=10 terminal=true"
+echo "--Live I/O (2s × 5)  | bash=$ZPOOL param1=iostat param2=$POOL_NAME param3=2 param4=5 terminal=true"
+echo "--Detailed I/O       | bash=$ZPOOL param1=iostat param2=-v param3=$POOL_NAME param4=1 param5=10 terminal=true"
 
-# ===== QUICK ACTIONS =====
+# ────────────────────────────────────────────────────────────
+# Quick Actions
+# ────────────────────────────────────────────────────────────
 echo "---"
 echo "⚡ Quick Actions"
 echo "--Clear Error Counters | bash=$ZPOOL param1=clear param2=$POOL_NAME terminal=true refresh=true"
-echo "--Refresh Display | refresh=true"
-echo "---"
-echo "--Export Pool | bash=$ZPOOL param1=export param2=$POOL_NAME terminal=true refresh=true"
-echo "--Import Pool | bash=$ZPOOL param1=import param2=-d param3=/dev param4=$POOL_NAME terminal=true refresh=true"
+echo "--Export Pool          | bash=$ZPOOL param1=export param2=$POOL_NAME terminal=true refresh=true"
+echo "--Import Pool          | bash=$ZPOOL param1=import param2=-d param3=/dev param4=$POOL_NAME terminal=true refresh=true"
+echo "--Refresh              | refresh=true"
 
-# ===== ADVANCED =====
+# ────────────────────────────────────────────────────────────
+# Advanced / Diagnostics
+# ────────────────────────────────────────────────────────────
 echo "---"
-echo "⚙️ Advanced"
-echo "--Full Pool Status | bash=$ZPOOL param1=status param2=-v param3=$POOL_NAME terminal=true"
-echo "--Pool Properties | bash=$ZPOOL param1=get param2=all param3=$POOL_NAME terminal=true"
-echo "--Dataset Properties | bash=$ZFS param1=get param2=all param3=$POOL_NAME/backups terminal=true"
-echo "--Pool History | bash=$ZPOOL param1=history param2=$POOL_NAME terminal=true"
-echo "--View Logs | bash=tail param1=-100 param2=/var/log/zfs-automount.log terminal=true"
+echo "⚙ Advanced"
+echo "--Full Pool Status   | bash=$ZPOOL param1=status param2=-v param3=$POOL_NAME terminal=true"
+echo "--Pool Properties    | bash=$ZPOOL param1=get param2=all param3=$POOL_NAME terminal=true"
+echo "--Dataset Properties | bash=$ZFS   param1=get param2=all param3=$POOL_NAME terminal=true"
+echo "--Pool History       | bash=$ZPOOL param1=history param2=$POOL_NAME terminal=true"
+echo "--View Automount Log | bash=/usr/bin/tail param1=-100 param2=/var/log/zfs-automount.log terminal=true"
 
-# ===== ABOUT =====
+# ────────────────────────────────────────────────────────────
+# About
+# ────────────────────────────────────────────────────────────
 echo "---"
-echo "ℹ️ About"
-echo "--ZFS Version: $(zpool version | head -1 | awk '{print $2}')"
+echo "ℹ About"
+ZFS_VERSION=$("$ZPOOL" version 2>/dev/null | head -1 | awk '{print $2}' || echo "unknown")
+echo "--ZFS: $ZFS_VERSION"
 echo "--Pool: $POOL_NAME"
-echo "--Monitoring: Active"
-echo "--Refresh: Every 30s"
+echo "--Refresh: every 30s"
+echo "--macos-zfs-das | href=https://github.com/contextinit/macos-zfs-das"
