@@ -59,9 +59,9 @@ dist/
 website/.env
 website/.env.local
 
-# Stale directories
+# Website & web frontend (hosted on Hostinger, not part of the GitHub repo)
+website/
 web/
-__PersonalDocumentation/
 
-# Website builder artifacts
-website/builder.hostinger.com/
+# Personal notes
+__PersonalDocumentation/
